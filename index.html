@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 素養共通語言學習平台 | AI Literacy Common Language Learning Platform</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'], serif: ['Merriweather','serif'] } } }
+}
+</script>
+<style>
+@keyframes fadeInUp { from{opacity:0;transform:translateY(15px)} to{opacity:1;transform:translateY(0)} }
+.animate-fade-in { animation: fadeInUp 0.5s ease-out forwards; }
+.perspective { perspective: 1000px; }
+.transform-style-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.rotate-y-180 { transform: rotateY(180deg); }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.dark ::-webkit-scrollbar-thumb { background: #475569; }
+body { background:#f4f4f4; }
+.dark body { background:#121212; }
+::selection { background:#004030; color:#fff; }
+.dark ::selection { background:#D8C3A5; color:#004030; }
+header, footer, button, [role="button"], .ui-decoration { -webkit-user-select: none; user-select: none; }
+input, textarea, select { -webkit-user-select: text; user-select: text; }
+</style>
+</head>
+<body class="bg-[#f4f4f4] dark:bg-[#121212] font-sans text-slate-800 dark:text-slate-100 transition-colors duration-300">
+<div id="root"></div>
+<script type="text/babel" data-presets="react,env">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ============ 防禦機制 Defense ============ */
+(function(){
+  const ALLOWED = ['lolopodcast.github.io','localhost','127.0.0.1'];
+  const REDIRECT = 'https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo';
+  if (!ALLOWED.some(d => location.hostname === d || location.hostname.endsWith('.'+d))) {
+    document.body.innerHTML = '<div style="text-align:center;padding:60px;font-family:sans-serif"><h1>Access Denied</h1><p>This resource is not authorised on this domain.</p></div>';
+    setTimeout(() => location.href = REDIRECT, 3000);
+    return;
+  }
+  if (window.self !== window.top) {
+    try { window.top.location.href = window.self.location.href; }
+    catch(e) { document.body.innerHTML = '<div style="text-align:center;padding:60px"><h1>Frame Blocked</h1><p>This content cannot be embedded.</p></div>'; }
+  }
+})();
+
+const COPYRIGHT_MSG = 'Intellectual Property of Prof. Shihmin Lo';
+function showCopyrightToast(){
+  let el = document.getElementById('__copyright_toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '__copyright_toast';
+    el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#004030;color:#D8C3A5;padding:10px 18px;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.25);transition:opacity .4s;';
+    el.textContent = COPYRIGHT_MSG;
+    document.body.appendChild(el);
+  }
+  el.style.opacity = '1';
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+document.addEventListener('contextmenu', e => {
+  const selection = window.getSelection().toString().trim();
+  const isImage = e.target.tagName === 'IMG' || (e.target.closest && e.target.closest('svg'));
+  if (selection.length > 0) { return true; }
+  if (isImage) { e.preventDefault(); showCopyrightToast(); return; }
+  e.preventDefault(); showCopyrightToast();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'F12') { e.preventDefault(); showCopyrightToast(); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'u') { e.preventDefault(); showCopyrightToast(); return; }
+  if (e.ctrlKey && e.shiftKey && ['i','j','c'].includes(e.key.toLowerCase())) { e.preventDefault(); showCopyrightToast(); return; }
+});
+
+document.addEventListener('dragstart', e => {
+  if (e.target.tagName === 'IMG' || (e.target.closest && e.target.closest('svg'))) e.preventDefault();
+});
+
+const sanitizeStudentId = (v) => v.replace(/[^0-9A-Za-z]/g, '').slice(0, 12);
+const sanitizeName = (v) => v.replace(/[<>"'&\\]/g, '').slice(0, 50);
+
+/* ============ 答案混淆 Answer Obfuscation ============ */
+const _SALT = 'AICF2026';
+const _e = (s, n) => {
+  const p = s + ':' + n;
+  let r = '';
+  for (let i = 0; i < p.length; i++) r += String.fromCharCode(p.charCodeAt(i) ^ ((i + 7) * 3 & 0xFF));
+  return btoa(r);
+};
+const _d = (token) => {
+  const decoded = atob(token);
+  let r = '';
+  for (let i = 0; i < decoded.length; i++) r += String.fromCharCode(decoded.charCodeAt(i) ^ ((i + 7) * 3 & 0xFF));
+  return parseInt(r.split(':')[1], 10);
+};
+const _A0 = _e(_SALT,0), _A1 = _e(_SALT,1), _A2 = _e(_SALT,2), _A3 = _e(_SALT,3), _A4 = _e(_SALT,4), _A5 = _e(_SALT,5), _A6 = _e(_SALT,6), _A7 = _e(_SALT,7);
+
+/* ============ Icon Components ============ */
+const IconBookOpen = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>;
+const IconAlertTriangle = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+const IconCheckCircle = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+const IconGlobe = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+const IconChevronRight = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
+const IconChevronUp = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>;
+const IconMenu = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>;
+const IconX = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+const IconMoon = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+const IconSun = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
+const IconPlay = (p) => <svg {...p} viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>;
+const IconPause = (p) => <svg {...p} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
+const IconSquare = (p) => <svg {...p} viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>;
+const IconArrowRight = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
+const IconActivity = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+const IconCpu = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/></svg>;
+const IconTrendingUp = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>;
+const IconLayers = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>;
+const IconFlag = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>;
+const IconZap = (p) => <svg {...p} viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+const IconFlask = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2v6L4.5 18.5A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.8-2.5L15 8V2"/><line x1="8" y1="2" x2="16" y2="2"/><line x1="7" y1="15" x2="17" y2="15"/></svg>;
+const IconZapLab = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+const IconHome = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+const IconUsers = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+
+/* ============ 模組架構常數 Module Constants ============ */
+const NUM_LEARN = 6;
+const TOTAL = 1 + NUM_LEARN + 3;
+const IDX_LAB = NUM_LEARN + 1;
+const IDX_RES = NUM_LEARN + 2;
+const IDX_ANA = NUM_LEARN + 3;
+
+const dict = {
+zh: {
+brand: "AICF",
+title: "AI 素養共通語言學習平台",
+subtitle: "整合 DigCompEdu、UNESCO、OECD、US-DOE 四大國際架構，建立校長．師．生．親的 AI 素養共通語言",
+nav_modules: "單元目錄", nav_prev: "上一單元", nav_next: "下一單元", nav_home: "首頁",
+key_terms: "關鍵專有名詞", flip_prompt: "點擊翻轉",
+flip_status: "已讀 {read} / 已顯示 {shown} / 總計 {total}",
+flip_next: "下一組", flip_retry: "重新開始",
+audio_read: "語音導覽",
+quiz_title: "模組知識檢定",
+quiz_status: "答對 {correct} / 已答 {answered} / 總計 {total}",
+quiz_next: "下一組", quiz_retry: "重新測驗",
+submit: "提交答案",
+score: "得分", correct: "正確", incorrect: "錯誤", explanation: "解析",
+overview_label: "Overview 概述",
+highlights_label: "Highlights 重點",
+deep_dive_label: "Deep Dive 深入解析",
+wrapup_label: "Wrap-up 總結",
+
+// ===== M0 執行概要 =====
+m0_nav: "0. 執行概要",
+m0_title: "從理論到共識：AI 素養的四大國際參照與台灣本土實踐",
+m0_intro: "人工智慧正重塑高等教育的教與學方式，但「AI 素養」一詞在不同利害關係人之間，往往各說各話。本平台彙整四個具代表性的國際架構——歐盟 DigCompEdu 與 AI Pioneers 計畫、聯合國教科文組織（UNESCO）AI 素養架構、經濟合作發展組織（OECD）與歐盟執委會共同發布的 AI 素養架構、以及美國教育部（US-DOE）「以教育者為中心」取向——逐一說明其核心主張、適用對象與限制。在完整理解四大來源之後，本平台進一步整合比較，並實踐於台灣商管課程情境下，校長、教師、學生、家庭與產業四方都能使用的共通語言與自我評量工具。我們不追求評量的完美或學術精確，而是希望四方能在十分鐘內，對「目前 AI 素養大概在什麼程度」形成基本共識，作為對話與下一步行動的起點。",
+m0_why: "為什麼需要共通語言？",
+m0_why_desc: "當校長關心治理與風險，教師關心教學整合，學生關心學習效能，家庭與產業關心未來就業力時，若彼此使用不同的詞彙與分級標準，溝通便容易失焦。本平台提供的不是另一套全新標準，而是一張「翻譯地圖」，讓四個既有的國際架構彼此對照，並轉譯為台灣校園可用的語言。",
+m0_modules: [
+  { num: "01", title: "DigCompEdu + AI Pioneers", desc: "歐盟教師數位素養架構與 AI 補充架構" },
+  { num: "02", title: "UNESCO AI 素養架構", desc: "學生與教師的 AI 能力進程：獲得．深化．創造" },
+  { num: "03", title: "OECD／歐盟執委會架構", desc: "四大行為構面與「元認知怠惰」風險" },
+  { num: "04", title: "US-DOE 取向", desc: "以教育者為中心的人本 AI 導入精神" },
+  { num: "05", title: "跨架構整合比較", desc: "五大構面 D1–D5 對照與共通邏輯" },
+  { num: "06", title: "台灣本土化與四方共識", desc: "校長．師．生．親的共通語言與分級" }
+],
+m0_stats: [
+  { val: "4", label: "國際參照架構" },
+  { val: "5", label: "核心素養構面" },
+  { val: "4", label: "利害關係人角色" },
+  { val: "3", label: "簡化分級層次" }
+],
+m0_start: "開始學習 →",
+
+// ===== M1 DigCompEdu + AI Pioneers =====
+m1_nav: "1. DigCompEdu + AI Pioneers",
+m1_title: "歐盟教師數位素養架構與 AI 補充架構",
+m1_overview: "DigCompEdu 是歐盟執委會於 2017 年發布的《歐洲教育者數位素養架構》，描繪教師在數位教學上應具備的 6 大能力領域與 22 項細項能力。2023 年起，「AI Pioneers」計畫（歐盟 Erasmus+ 資助）以 DigCompEdu 為基礎，針對職業教育與成人教育情境，補充 AI 工具應用的具體指引，而非另立新架構。",
+m1_highlights: [
+  "六大能力領域涵蓋專業投入、數位資源、教與學、評量、賦權學習者、促進學習者數位素養",
+  "六級分級 A1 Newcomer 到 C2 Pioneer，强調漸進式專業成長而非一次到位",
+  "AI Pioneers 計畫聚焦職業教育與成人教育場域中 AI 工具的實務應用案例",
+  "強調「能力」而非「工具操作」，重視教師對科技選擇背後教學決策的反思"
+],
+m1_p1: "DigCompEdu 的設計邏輯是「以教師專業發展為核心」。它不是一份工具操作手冊，而是一套協助教師自我定位、規劃成長路徑的參照座標。六大領域分別是：專業投入（運用數位科技進行專業溝通與協作）、數位資源（搜尋、創建、分享教學資源）、教與學（管理與協調數位科技於教學過程中的運用）、評量（運用數位科技強化評量策略）、賦權學習者（運用數位科技促進學習者的個別化與主動參與）、促進學習者數位素養（培養學習者自身的數位能力）。",
+m1_p2: "六個熟練度層級——A1 Newcomer（初識者）、A2 Explorer（探索者）、B1 Integrator（整合者）、B2 Expert（專家）、C1 Leader（領航者）、C2 Pioneer（先驅者）——並非用來標籤教師的「好壞」，而是描述一段典型的專業成長軌跡：從覺察科技存在，到能整合運用，再到能引領他人、進行創新實驗。重要的是，等級之間沒有強制時程，教師可能在某個領域是 B2，在另一個領域仍是 A2，這正是架構設計的彈性所在。",
+m1_p3: "AI Pioneers Project 是 DigCompEdu 在生成式 AI 時代的延伸補充，而非取代品。它特別關注職業教育（VET）與成人教育場域，提供教師將 AI 工具（如對話式助理、自動化評量、個別化學習路徑生成）融入既有六大領域的具體做法與案例。這也提醒我們：任何新興科技架構，多半是站在既有成熟架構之上做擴充，而非憑空創造一套全新邏輯——這對台灣校園在引入 AI 架構時，同樣是重要的設計參考。",
+m1_wrapup: "DigCompEdu 提供了一套經過歐洲多國驗證、聚焦教師專業成長的六領域六層級架構，而 AI Pioneers 計畫則是其在生成式 AI 浪潮下的職業教育延伸。兩者共同的啟示是：AI 素養的提升應鑲嵌在既有的教學專業發展脈絡中，而非另立山頭。",
+m1_terms: [
+  { front: "DigCompEdu", back: "歐洲教育者數位素養架構，2017 年歐盟執委會發布，6 大能力領域、22 項細項能力" },
+  { front: "六大能力領域", back: "專業投入、數位資源、教與學、評量、賦權學習者、促進學習者數位素養" },
+  { front: "A1–C2 六級分級", back: "Newcomer→Explorer→Integrator→Expert→Leader→Pioneer，描述漸進式專業成長軌跡" },
+  { front: "AI Pioneers Project", back: "歐盟 Erasmus+ 資助計畫，以 DigCompEdu 為基礎，補充職業教育與成人教育場域的 AI 應用指引" },
+  { front: "賦權學習者", back: "DigCompEdu 六大領域之一，指運用數位科技促進學習者個別化與主動參與" },
+  { front: "彈性等級觀", back: "教師在不同領域可能處於不同等級，架構不要求齊頭式進展" }
+],
+m1_q: [
+  { q: "DigCompEdu 架構由誰發布？", opts: ["聯合國教科文組織","歐盟執委會","美國教育部","世界經濟論壇"], ans: _A1, exp: "DigCompEdu 由歐盟執委會（European Commission）於 2017 年發布。" },
+  { q: "DigCompEdu 的熟練度分級總共有幾級？", opts: ["3 級","4 級","6 級","8 級"], ans: _A2, exp: "共 6 級：A1 Newcomer 到 C2 Pioneer。" },
+  { q: "下列哪一項不是 DigCompEdu 六大能力領域之一？", opts: ["專業投入","數位資源","程式編寫能力","評量"], ans: _A2, exp: "六大領域為專業投入、數位資源、教與學、評量、賦權學習者、促進學習者數位素養，不包含「程式編寫能力」。" },
+  { q: "AI Pioneers 計畫與 DigCompEdu 的關係是？", opts: ["完全獨立、互不相關的兩套架構","AI Pioneers 取代了 DigCompEdu","AI Pioneers 是以 DigCompEdu 為基礎的 AI 應用補充","DigCompEdu 是 AI Pioneers 的簡化版"], ans: _A2, exp: "AI Pioneers 計畫以 DigCompEdu 為基礎，補充 AI 工具於職業教育與成人教育場域的應用指引。" },
+  { q: "DigCompEdu 的 C2 Pioneer 等級代表什麼？", opts: ["剛開始接觸數位科技的教師","能整合運用但尚未深化的教師","在領域中具備領導與創新角色的教師","完全不使用數位科技的教師"], ans: _A2, exp: "C2 Pioneer 是最高等級，代表教師在該領域具備領導、實驗與創新的角色。" }
+],
+
+// ===== M2 UNESCO =====
+m2_nav: "2. UNESCO AI 素養架構",
+m2_title: "聯合國教科文組織 AI 能力架構：學生與教師",
+m2_overview: "UNESCO 於 2024 年發布兩份姊妹文件：《學生 AI 能力架構》與《教師 AI 能力架構》。兩者共用同一套進程邏輯——獲得（Acquire）、深化（Deepen）、創造（Create）——強調 AI 素養不只是「會不會用」，更是一段從理解、應用到批判性創造的歷程。",
+m2_highlights: [
+  "三層進程：獲得（基礎認知）、深化（應用與評估）、創造（設計與創新）",
+  "學生架構的四個構面：人本心態、AI 倫理、AI 技術與應用、AI 系統設計",
+  "教師架構強調人本心態、倫理安全使用、AI 基礎與應用、AI 教學法、專業發展五個支柱",
+  "兩份文件皆以「人本」（human-centred）為起點，而非以技術能力為起點"
+],
+m2_p1: "UNESCO 兩份架構最大的特色，是把「人本心態」放在最優先的位置，而不是先談技術操作。這呼應 UNESCO 一貫的教育哲學：科技應服務於人的全面發展，而非反過來讓人適應科技。學生架構的四個構面——人本心態、AI 倫理、AI 技術與應用、AI 系統設計——依此順序排列，本身就是一種價值宣示。",
+m2_p2: "「獲得、深化、創造」三層進程，與 DigCompEdu 的六級分級邏輯不同，UNESCO 選擇更簡化的三階段描述。獲得階段聚焦基本認知與覺察（知道 AI 是什麼、能做什麼、有什麼風險）；深化階段聚焦情境化應用與批判評估（能在特定任務中選用合適工具，並評估其輸出是否可信）；創造階段則聚焦主動設計與創新（能參與設計、調整、甚至質疑既有 AI 系統的決策邏輯）。",
+m2_p3: "教師架構在學生架構的基礎上，額外加入「AI 教學法」與「專業發展」兩個支柱，反映教師角色的雙重性：教師不只是 AI 的使用者，更是引導學生建立 AI 素養的「中介者」。這也是為什麼許多商管課程在導入 AI 工具時，教師需要的素養往往比單純的「工具熟練度」更複雜——他們需要同時具備使用能力與教學轉化能力。",
+m2_wrapup: "UNESCO 架構提供了一套以人為本、簡潔的三階段進程語言，並透過學生與教師兩份姊妹文件，清楚劃分不同角色的素養重點，是國際上最常被引用的 AI 教育素養參照之一。",
+m2_terms: [
+  { front: "獲得 Acquire", back: "UNESCO 三層進程第一階段，聚焦基本認知與覺察" },
+  { front: "深化 Deepen", back: "第二階段，聚焦情境化應用與批判性評估 AI 輸出" },
+  { front: "創造 Create", back: "第三階段，聚焦主動設計、調整甚至質疑 AI 系統" },
+  { front: "人本心態", back: "學生與教師架構共同的首要構面，強調科技服務於人而非反之" },
+  { front: "AI 教學法", back: "教師架構獨有支柱，指引導學生建立 AI 素養的教學轉化能力" },
+  { front: "AI 系統設計", back: "學生架構第四構面，指參與或理解 AI 系統設計邏輯的能力" }
+],
+m2_q: [
+  { q: "UNESCO AI 能力架構的三層進程依序是？", opts: ["認知、應用、精通","獲得、深化、創造","初階、中階、高階","覺察、整合、領導"], ans: _A1, exp: "三層進程為獲得（Acquire）、深化（Deepen）、創造（Create）。" },
+  { q: "UNESCO 學生與教師架構共同最優先強調的構面是？", opts: ["程式撰寫能力","人本心態","硬體操作能力","行銷應用能力"], ans: _A1, exp: "兩份架構都將「人本心態」列為優先構面，呼應 UNESCO 一貫教育哲學。" },
+  { q: "UNESCO 教師架構比學生架構多出的支柱是？", opts: ["AI 倫理","AI 技術與應用","AI 教學法與專業發展","人本心態"], ans: _A2, exp: "教師架構額外加入「AI 教學法」與「專業發展」兩個支柱。" },
+  { q: "「深化」階段的核心特徵是？", opts: ["完全不接觸 AI","基礎認知與覺察","情境化應用與批判性評估","設計全新 AI 系統"], ans: _A2, exp: "深化階段強調在特定情境中應用 AI 並批判評估其輸出。" },
+  { q: "UNESCO 架構發布的年度是？", opts: ["2018","2020","2024","2026"], ans: _A2, exp: "UNESCO 學生與教師 AI 能力架構皆於 2024 年發布。" }
+],
+
+// ===== M3 OECD =====
+m3_nav: "3. OECD／歐盟執委會架構",
+m3_title: "OECD 與歐盟執委會共同發布的 AI 素養架構",
+m3_overview: "OECD 與歐盟執委會（European Commission）共同發展了一套 AI 素養架構，提出四個行為構面：理解並運用 AI（Engaging）、創造性運用 AI（Creating）、管理 AI 風險（Managing）、設計 AI 系統（Designing）。架構同時也回應了一個日益受關注的學界議題——「元認知怠惰」（metacognitive laziness）：過度依賴 AI 可能削弱使用者自身的批判思考與獨立判斷能力。",
+m3_highlights: [
+  "由 OECD 與歐盟執委會共同開發，並非 OECD 單獨制定",
+  "四大行為構面：理解運用、創造性運用、管理風險、設計系統",
+  "回應學界對「元認知怠惰」的關注，但此概念並非 OECD 獨創或專屬",
+  "強調在效率與批判思考之間取得平衡，而非鼓吹無條件信任 AI 工具"
+],
+m3_p1: "需要先澄清一個常見的誤解：這套架構並不是 OECD 單方面制定的產物，而是 OECD 與歐盟執委會合作開發的成果，這也說明了它與歐盟其他數位素養架構（如 DigCompEdu）在精神上的高度一致性——同樣重視人本、批判思考與情境化應用。",
+m3_p2: "四個行為構面當中，「理解並運用 AI」是最基礎的層次，指能辨識 AI 系統的存在、理解其基本運作邏輯與限制；「創造性運用 AI」進一步要求能將 AI 工具整合進創作、分析、決策等任務中；「管理 AI 風險」聚焦於辨識偏誤、隱私、可信度等風險並採取對應措施；「設計 AI 系統」則是最進階的構面，涉及參與 AI 系統本身的建構與調整邏輯。",
+m3_p3: "「元認知怠惰」是近年學術文獻（如 2024 年底發表的研究 arXiv:2412.09315）中逐漸受到重視的概念，指當使用者過度仰賴 AI 提供答案時，會逐漸降低自己主動思考、驗證、質疑的意願與能力。這個概念並非 OECD 獨家提出，而是學界廣泛討論的風險之一，OECD 的《數位教育展望》系列報告引用並呼應了這項擔憂，但將其視為 OECD 唯一或專屬的架構標準並不準確。對教育工作者而言，這提醒我們在設計 AI 融入教學的活動時，需要刻意保留「不假手 AI」的思考訓練環節。",
+m3_wrapup: "OECD／歐盟執委會架構以四個行為構面描繪 AI 素養的進階路徑，並提醒我們留意過度依賴 AI 可能帶來的「元認知怠惰」風險——這是一項需要持續關注、但屬於整個學界共同探討的議題，而非單一機構的專利主張。",
+m3_terms: [
+  { front: "理解並運用 AI", back: "OECD/EC 架構最基礎構面，指辨識 AI 系統並理解其運作邏輯與限制" },
+  { front: "創造性運用 AI", back: "整合 AI 工具進入創作、分析、決策等任務的能力" },
+  { front: "管理 AI 風險", back: "辨識偏誤、隱私、可信度等風險並採取對應措施的能力" },
+  { front: "設計 AI 系統", back: "最進階構面，涉及參與 AI 系統建構與調整邏輯" },
+  { front: "元認知怠惰", back: "過度依賴 AI 導致主動思考、驗證、質疑能力下降的學界關注議題，非 OECD 專屬概念" },
+  { front: "OECD 與歐盟執委會共同開發", back: "澄清架構並非 OECD 單方制定，而是跨機構合作成果" }
+],
+m3_q: [
+  { q: "OECD AI 素養架構實際上是由誰開發的？", opts: ["OECD 單獨制定","OECD 與歐盟執委會共同開發","僅由歐盟執委會制定","由聯合國主導制定"], ans: _A1, exp: "此架構是 OECD 與歐盟執委會（European Commission）共同開發的成果。" },
+  { q: "下列哪一項不是該架構的四大行為構面？", opts: ["理解並運用 AI","創造性運用 AI","管理 AI 風險","背誦 AI 演算法公式"], ans: _A3, exp: "四大構面為理解運用、創造性運用、管理風險、設計系統，不包含背誦公式。" },
+  { q: "「元認知怠惰」概念的正確理解是？", opts: ["OECD 獨家提出且專屬於該架構的概念","學界廣泛討論、OECD 報告引用呼應的風險議題","與 AI 素養完全無關的心理學名詞","僅適用於兒童教育的概念"], ans: _A1, exp: "元認知怠惰是學界廣泛討論的議題，OECD 報告引用並呼應，但並非其獨創或專屬概念。" },
+  { q: "「設計 AI 系統」構面相較其他三項構面的特性是？", opts: ["最基礎、最容易達成","與其他構面完全無關","最進階，涉及參與系統建構邏輯","只適用於工程師，與一般使用者無關"], ans: _A2, exp: "設計 AI 系統是四構面中最進階的層次，涉及參與系統本身的建構與調整。" },
+  { q: "面對元認知怠惰風險，教育工作者較合適的回應策略是？", opts: ["完全禁止學生使用任何 AI 工具","刻意保留不假手 AI 的思考訓練環節","放任不管，相信學生會自我調節","只在期末考前才提醒一次"], ans: _A1, exp: "建議在設計教學活動時刻意保留獨立思考、驗證、質疑的訓練環節，平衡 AI 使用與批判思考。" }
+],
+
+// ===== M4 US-DOE =====
+m4_nav: "4. US-DOE 取向",
+m4_title: "美國教育部「以教育者為中心」取向",
+m4_overview: "美國教育部（US Department of Education）於 2023 年 5 月發布報告《人工智慧與教學的未來》（Artificial Intelligence and the Future of Teaching and Learning），提出「始終以教育者為中心」（Always Center Educators, ACE）的取向。需要特別澄清：ACE 是一種政策精神與價值取向，並非一套正式編號、條列式的原則清單。",
+m4_highlights: [
+  "ACE 是取向（orientation）而非正式編號的核心原則清單",
+  "核心精神：教育者應保有決策主導權，AI 是輔助而非取代",
+  "強調「人在迴圈中」（human-in-the-loop）作為設計與導入 AI 工具的前提",
+  "報告同時提醒風險與機會並存，呼籲謹慎且漸進的導入步調"
+],
+m4_p1: "許多二手資料在轉述美國教育部這份報告時，容易誤將 ACE 描述成「五大原則」或「七大核心要素」這類正式條列清單，但查閱原始報告會發現，ACE 更準確的定位是貫穿全文的一種政策取向與價值立場，而不是一份可以逐條打勾核對的清單。這個澄清很重要，因為它影響我們如何「使用」這份文件——不是拿來做合規檢核，而是用來檢視一項 AI 教育政策或工具導入計畫，是否真正把教育者的專業判斷放在核心位置。",
+m4_p2: "ACE 取向的核心精神可以歸納為幾個反覆出現的主題：教育者應在 AI 工具的選用、評估與調整過程中保有實質決策權，而非被動接受由科技公司或行政單位預先設定好的方案；AI 應該被設計來增強教育者的專業能力，而非取代教育者的判斷；任何 AI 系統都應該保有「人在迴圈中」的設計，確保關鍵教育決策（如學生評量、個別化學習路徑）最終由人來把關。",
+m4_p3: "報告也誠實地呈現了機會與風險並存的態度，既肯定 AI 在個別化學習、行政效率上的潛力，也提醒資料隱私、演算法偏誤、過度自動化等風險。這種「審慎樂觀」的基調，與本平台前述三個架構（DigCompEdu、UNESCO、OECD）所共享的人本精神是一致的——四大架構雖然來自不同機構、使用不同詞彙，但都不約而同地把「人」的判斷與能動性放在 AI 系統之上。",
+m4_wrapup: "US-DOE 的 ACE 取向提醒我們：任何 AI 教育政策的評估標準，都應該回到「教育者的專業判斷是否被保留與強化」這個核心問題，而不是被簡化成一份可勾選的清單。",
+m4_terms: [
+  { front: "ACE 取向", back: "Always Center Educators，始終以教育者為中心，是一種政策精神而非正式編號原則清單" },
+  { front: "人在迴圈中", back: "Human-in-the-loop，確保關鍵教育決策最終由人把關的設計原則" },
+  { front: "審慎樂觀", back: "US-DOE 報告對 AI 教育應用機會與風險並陳的基調" },
+  { front: "教育者決策主導權", back: "ACE 核心精神之一，教育者應在 AI 工具選用與調整中保有實質決策權" },
+  { front: "報告發布時間", back: "2023 年 5 月，《人工智慧與教學的未來》報告" },
+  { front: "常見誤讀", back: "將 ACE 誤認為正式編號的「五大原則」或「核心要素清單」，實則為貫穿全文的取向" }
+],
+m4_q: [
+  { q: "ACE 在 US-DOE 報告中的正確定位是？", opts: ["一份正式編號的五大核心原則清單","貫穿全文的政策取向與價值立場","美國聯邦法律強制規範","一套技術操作手冊"], ans: _A1, exp: "ACE 是一種取向（orientation），並非正式編號條列的原則清單。" },
+  { q: "ACE 取向最核心的精神是？", opts: ["AI 應完全取代教師的判斷","教育者應保有決策主導權，AI 是輔助而非取代","學生應自主決定是否使用 AI","學校應禁止使用任何 AI 工具"], ans: _A1, exp: "ACE 核心精神是教育者保有決策主導權，AI 扮演輔助角色。" },
+  { q: "「人在迴圈中」（human-in-the-loop）指的是？", opts: ["AI 系統完全自動化、無需人工介入","關鍵教育決策最終由人把關的設計原則","只允許工程師操作 AI 系統","學生必須排隊使用電腦教室"], ans: _A1, exp: "人在迴圈中強調關鍵決策（如評量）最終仍由人把關，而非交由 AI 全自動決定。" },
+  { q: "US-DOE 這份報告發布於何時？", opts: ["2020 年","2023 年 5 月","2025 年","2026 年"], ans: _A1, exp: "報告《人工智慧與教學的未來》於 2023 年 5 月發布。" },
+  { q: "報告對 AI 教育應用機會與風險的態度是？", opts: ["只談機會，完全忽略風險","只談風險，完全否定機會","審慎樂觀，機會與風險並陳","拒絕表態，保持中立沉默"], ans: _A2, exp: "報告呈現審慎樂觀的態度，肯定潛力同時提醒隱私、偏誤等風險。" }
+],
+
+// ===== M5 跨架構整合比較 =====
+m5_nav: "5. 跨架構整合比較",
+m5_title: "五大構面 D1–D5：跨架構的共通邏輯",
+m5_overview: "比較四大架構後可以發現，儘管用語與分級方式不同，但背後存在高度一致的核心關注。本平台將其整合為五個共通構面（D1–D5），作為後續台灣本土化共通語言的基礎結構。",
+m5_highlights: [
+  "D1 AI 基礎素養 對應 DigCompEdu 數位資源、UNESCO 獲得階段、OECD 理解運用",
+  "D2 教學／應用整合 對應 DigCompEdu 教與學、UNESCO 深化階段、OECD 創造性運用",
+  "D3 倫理與批判判斷 對應 UNESCO AI 倫理、OECD 元認知怠惰警示、US-DOE 人在迴圈中",
+  "D4 治理與風險管理 對應 OECD 管理風險、US-DOE 教育者決策主導權",
+  "D5 持續成長與創新 對應 DigCompEdu C1–C2 領航者/先驅者、UNESCO 創造階段"
+],
+m5_p1: "四大架構各有其發展脈絡與側重，但若把它們並排檢視，會發現一個共通的底層邏輯：素養的養成都是從「基礎認知」開始，逐步走向「應用整合」，再深化到「倫理批判」，同時需要「治理風險」的配套，最終指向「持續成長」的能力。這五個階段並非逐步遞進的考試關卡，而是五個並存、互相支撐的構面。",
+m5_p2: "以 D1 AI 基礎素養為例，它對應 DigCompEdu 的「數位資源」領域、UNESCO 的「獲得」階段，以及 OECD 的「理解並運用 AI」構面——三者用語不同，但都指向「知道 AI 是什麼、能做什麼、限制在哪裡」這個起點。D2 教學／應用整合則對應 DigCompEdu 的「教與學」、UNESCO 的「深化」階段、OECD 的「創造性運用」，三者共同關注「能否將 AI 工具有效融入具體任務情境」。",
+m5_p3: "D3 倫理與批判判斷整合了 UNESCO 的「AI 倫理」構面、OECD 對「元認知怠惰」的警示，以及 US-DOE「人在迴圈中」的設計原則——三者從不同角度提醒我們：AI 素養不只是技術能力，更包含「知道什麼時候該質疑、該驗證、該堅持人的判斷」的能力。D4 治理與風險管理呼應 OECD 的「管理風險」構面與 US-DOE 強調的「教育者決策主導權」，關注組織層級的政策與配套機制。D5 持續成長與創新則對應 DigCompEdu 最高兩級（C1 領航者、C2 先驅者）與 UNESCO 的「創造」階段，指向素養養成沒有終點，而是持續精進的歷程。",
+m5_wrapup: "D1–D5 五大構面不是另創新架構，而是四大國際參照的「最大公約數」，讓校長、教師、學生與家庭在討論 AI 素養時，能用同一套五個構面對話，再各自回溯到原始架構查找細節。",
+m5_terms: [
+  { front: "D1 AI 基礎素養", back: "知道 AI 是什麼、能做什麼、限制在哪裡的起點構面" },
+  { front: "D2 教學／應用整合", back: "能否將 AI 工具有效融入具體任務與教學情境" },
+  { front: "D3 倫理與批判判斷", back: "知道何時該質疑、驗證、堅持人的判斷的能力" },
+  { front: "D4 治理與風險管理", back: "組織層級的 AI 使用政策、風險辨識與配套機制" },
+  { front: "D5 持續成長與創新", back: "素養養成沒有終點，持續精進、領導與創新的能力" },
+  { front: "最大公約數邏輯", back: "D1–D5 整合四大架構共通關注，而非另立新標準" }
+],
+m5_q: [
+  { q: "D1 AI 基礎素養主要對應四大架構中的哪些概念？", opts: ["DigCompEdu 數位資源、UNESCO 獲得、OECD 理解運用","DigCompEdu C2、UNESCO 創造、OECD 設計系統","僅對應 US-DOE 取向","與四大架構皆無關"], ans: _A0, exp: "D1 對應 DigCompEdu 數位資源領域、UNESCO 獲得階段、OECD 理解並運用 AI 構面。" },
+  { q: "D3 倫理與批判判斷整合了哪些概念？", opts: ["僅 DigCompEdu 的評量領域","UNESCO AI 倫理、OECD 元認知怠惰警示、US-DOE 人在迴圈中","僅 UNESCO 的人本心態","僅 OECD 的設計系統構面"], ans: _A1, exp: "D3 整合 UNESCO 的 AI 倫理構面、OECD 對元認知怠惰的警示，以及 US-DOE 人在迴圈中的原則。" },
+  { q: "D1–D5 五大構面的設計目的是？", opts: ["取代四大國際架構成為新標準","作為四大架構的最大公約數，提供共通對話語言","僅供學術研究使用，不適合實務導入","只適用於理工科系，不適用於商管課程"], ans: _A1, exp: "D1–D5 是四大架構的整合，作為共通語言而非取代品。" },
+  { q: "D5 持續成長與創新對應哪些原始概念？", opts: ["DigCompEdu A1 與 UNESCO 獲得階段","DigCompEdu C1–C2 與 UNESCO 創造階段","僅 OECD 管理風險構面","僅 US-DOE 審慎樂觀態度"], ans: _A1, exp: "D5 對應 DigCompEdu 最高兩級（C1、C2）與 UNESCO 的創造階段。" }
+],
+
+// ===== M6 台灣本土化與四方共識 =====
+m6_nav: "6. 台灣本土化與四方共識",
+m6_title: "校長．師．生．親：台灣商管課程的 AI 素養共通語言",
+m6_overview: "將 D1–D5 五大構面應用於台灣商管課程情境，需要面對一個現實：校長（學校行政主管）、教師、學生、家庭／產業四方的關注重點與所需的細緻程度並不相同。本模組說明如何在「不追求完美評量」的前提下，為四方建立一套簡化但足以溝通的共通分級語言，並對應到本平台「互動實驗室」中的四方自評工具。",
+m6_highlights: [
+  "教師與學生採六級完整分級（對應 DigCompEdu A1–C2 邏輯），因為兩者是 AI 導入教學現場的第一線",
+  "校長與家庭／產業採三級簡化分級（初步認知／基本支持或理解配合／積極治理或倡議），降低參與門檻",
+  "四方共用同一套 D1–D5 構面語言，只是分級顆粒度不同，確保彼此對話時不會雞同鴨講",
+  "自評工具刻意不做商管領域情境特化，保留通用敘述，避免簡化掉跨領域可比較性"
+],
+m6_p1: "為什麼教師與學生用六級、校長與家庭用三級？因為教師與學生是 AI 導入教學現場最直接的行動者，需要更細緻的自我定位來規劃個人成長路徑，六級分級能呼應 DigCompEdu 的精神；而校長與家庭／產業的角色更多是「支持者」與「監督者」，他們需要的不是精確的自我定位，而是快速判斷「目前狀態是否足以支持/監督教學現場的 AI 導入」，三級簡化（初步認知、基本支持或理解配合、積極治理或領導／倡議）已足夠達成溝通目的。",
+m6_p2: "四方共用 D1（基礎素養）、D2（應用整合）、D3（倫理判斷）、D4（治理風險）、D5（成長創新）這套構面語言，意味著當教師說「我在 D3 倫理判斷上是 B1」、校長說「我在 D3 上是基本支持」時，雙方至少知道在談論同一件事——而不是各自用「AI 素養好不好」這種模糊籠統的說法溝通，卻其實談論的是完全不同的面向。",
+m6_p3: "本平台刻意不將自評工具特化成財報分析、行銷企劃等具體商管情境案例，而是保留通用敘述。這個設計選擇背後的考量是：過度情境化雖然更貼近特定課程，但會犧牲跨領域、跨課程的可比較性，而「建立共通語言」這個目標，恰恰需要的是可廣泛套用、不被特定情境綁架的描述語言。教師可以在解讀自評結果時，自行對應到自己課程的具體案例。",
+m6_wrapup: "台灣本土化的關鍵不是發明新架構，而是在尊重四方角色差異的前提下，用同一套 D1–D5 語言、不同的分級顆粒度，搭建起一個低門檻、可快速達成基本共識的溝通機制。實際的量化評量工具請至「互動實驗室」模組體驗。",
+m6_terms: [
+  { front: "四位一體", back: "校長（學校行政主管）、教師、學生、家庭／產業／社會四方共同構成的 AI 導入生態系" },
+  { front: "六級／三級雙軌設計", back: "教師生用六級完整分級，校長家庭用三級簡化分級，因應角色差異" },
+  { front: "初步認知／基本支持／積極治理", back: "校長端三級簡化分級用語" },
+  { front: "初步認知／理解配合／積極倡議", back: "家庭／產業端三級簡化分級用語" },
+  { front: "通用敘述原則", back: "自評工具刻意不特化商管情境案例，保留跨領域可比較性" },
+  { front: "基本共識而非完美評量", back: "本平台設計哲學：目標是建立對話起點，而非追求學術精確的測量工具" }
+],
+m6_q: [
+  { q: "為什麼教師與學生採六級分級，校長與家庭採三級分級？", opts: ["六級比三級更準確，沒有其他原因","教師生是教學現場第一線行動者需要細緻定位，校長家庭是支持監督者只需快速判斷","三級分級是因為校長和家長能力較差","這是隨機決定，沒有設計邏輯"], ans: _A1, exp: "六級三級雙軌設計呼應角色差異：行動者需要細緻自我定位，支持監督者需要快速判斷。" },
+  { q: "四方共用 D1–D5 構面語言的主要目的是？", opts: ["讓所有人得到完全相同的分數","確保彼此對話時談論的是同一個構面，避免雞同鴨講","用來排名比較不同利害關係人","取代學校原有的考核制度"], ans: _A1, exp: "共用構面語言的目的是讓四方溝通時聚焦在同一個面向上，而非各說各話。" },
+  { q: "本平台自評工具為何不特化成財報分析、行銷企劃等商管案例？", opts: ["因為設計者沒有商管背景","保留通用敘述以維持跨領域可比較性，這是建立共通語言的核心需求","商管領域不需要 AI 素養","特化案例在技術上無法實現"], ans: _A1, exp: "保留通用敘述是為了不犧牲跨領域、跨課程的可比較性，呼應共通語言的設計目標。" },
+  { q: "本平台四方自評工具的設計哲學是？", opts: ["追求學術上完全精確的測量","建立基本共識與對話起點，不追求完美評量","作為正式人事考核依據","僅供校長單方使用"], ans: _A1, exp: "設計哲學明確是建立共通語言與基本共識，而非追求完美或拿來做正式考核。" }
+],
+
+// ===== M7 互動實驗室 Lab =====
+mlab_nav: "7. 互動實驗室",
+mlab_title: "互動實驗室：四方 AI 素養自我評量",
+mlab_desc: "本實驗室提供四個角色（校長／教師／學生／家庭・產業）的量化自評問卷，採用 D1–D5 五大構面的 Likert 量表計分，並以雷達圖呈現結果，作為四方共通語言的實際操作工具。請選擇您的角色開始評量，過程約需 5–8 分鐘。",
+mlab_labs: [
+  { title: "角色自評：校長／行政主管", desc: "8 題簡化版（三級分級邏輯），快速掌握行政治理視角的 AI 素養現況" },
+  { title: "角色自評：教師", desc: "10 題完整版（六級分級邏輯），對應教學整合與專業成長構面" },
+  { title: "角色自評：學生", desc: "10 題完整版（六級分級邏輯），對應學習與應用構面" },
+  { title: "角色自評：家庭／產業／社會", desc: "8 題簡化版（三級分級邏輯），快速掌握外部支持者視角的 AI 素養現況" }
+],
+mlab_select_role: "請選擇您的角色",
+mlab_role_principal: "校長／行政主管", mlab_role_teacher: "教師", mlab_role_student: "學生", mlab_role_parent: "家庭／產業／社會",
+mlab_start_assess: "開始評量",
+mlab_back_roles: "← 重新選擇角色",
+mlab_progress: "第 {cur} / {total} 題",
+mlab_submit_assess: "查看結果",
+mlab_result_title: "您的 AI 素養雷達圖",
+mlab_result_desc: "以下呈現您在 D1–D5 五大構面的自評結果，分數為 1–6 分量表平均值。",
+mlab_overall_label: "整體 AI 素養總分",
+mlab_level_low: "初步認知", mlab_level_mid: "基本支持／理解配合", mlab_level_high: "積極治理／領導倡議",
+mlab_retry_assess: "重新評量",
+mlab_scale: ["幾乎不曾","很少","偶爾","經常","大多時候","幾乎總是"],
+
+// ===== M8 外部學習資源 =====
+mres_nav: "8. 外部學習資源", 
+mres_title: "外部學習資源",
+mres_desc: "以下提供四大架構原始文件與延伸閱讀連結，供有興趣深入研究的使用者進一步查閱原始資料。",
+mres_groups: [
+  { group: "歐盟 DigCompEdu / AI Pioneers", links: [
+    { label: "DigCompEdu 官方架構說明（歐盟科學與知識服務）", url: "https://joint-research-centre.ec.europa.eu/digcompedu_en" },
+    { label: "AI Pioneers Project 官方網站", url: "https://aipioneers.org/" }
+  ]},
+  { group: "UNESCO", links: [
+    { label: "UNESCO AI Competency Framework for Students", url: "https://www.unesco.org/en/digital-education/artificial-intelligence" },
+    { label: "UNESCO AI Competency Framework for Teachers", url: "https://www.unesco.org/en/digital-education/artificial-intelligence" }
+  ]},
+  { group: "OECD / 歐盟執委會", links: [
+    { label: "OECD AI Literacy Framework", url: "https://www.oecd.org/en/topics/sub-issues/ai-literacy.html" },
+    { label: "OECD Digital Education Outlook", url: "https://www.oecd.org/en/publications/oecd-digital-education-outlook-2023_c74f03de-en.html" }
+  ]},
+  { group: "美國教育部 US-DOE", links: [
+    { label: "Artificial Intelligence and the Future of Teaching and Learning (2023)", url: "https://tech.ed.gov/ai/" }
+  ]}
+],
+
+// ===== M9 Analytics =====
+analytics_title: "學習歷程分析", analytics_desc: "以下記錄您在本平台的學習歷程數據，僅儲存於您目前使用的瀏覽器本機，不會上傳至任何伺服器。",
+analytics_form_title: "填寫資訊以解鎖匯出功能",
+analytics_group: "組別", analytics_group_select: "請選擇", analytics_dept: "系級",
+analytics_dept_ph: "例：IBS3",
+analytics_id: "學號", analytics_id_ph: "例：113212599",
+analytics_name_en: "英文姓名", analytics_name_en_ph: "例：Shihmin Lo",
+analytics_name_zh: "中文姓名", analytics_name_zh_ph: "例：王阿吉",
+analytics_export_csv: "匯出 CSV 歷程記錄",
+analytics_fill_required: "請填寫完整資訊以解鎖匯出",
+analytics_refresh_prompt: "是否刷新紀錄儲存？",
+group_options: ["G1","G2","G3","G4","G5","G6","G7","G8","G9","G10","G11","G12","Others"],
+analytics_total_time: "總學習時間", analytics_total_clicks: "總互動點擊",
+analytics_overall_acc: "總體測驗答對率",
+analytics_card_usage: "學習卡使用率",
+analytics_module: "模組", analytics_time: "停留時間",
+analytics_clicks: "點擊次數", analytics_acc: "答對率",
+analytics_correct_ans_total: "答對 / 已填答 / 總題數",
+analytics_cards_read_total: "已讀 / 總卡數",
+analytics_no_data: "尚未測驗", analytics_sec: "秒", analytics_times: "次",
+analytics_progress_title: "整體學習進度",
+analytics_progress_visited: "已瀏覽", analytics_progress_not_visited: "未瀏覽",
+analytics_progress_quiz_done: "已測驗",
+analytics_wp_title: "弱點分析與複習建議",
+analytics_wp_incorrect: "答錯題目：",
+analytics_wp_goto: "→ 前往複習此模組",
+analytics_wp_allpass: "所有已測驗模組答對率均達 75% 以上，表現優異！",
+analytics_wp_saved: "學習歷程已自動儲存於本機瀏覽器",
+analytics_wp_clear: "🗑 清除歷程",
+analytics_wp_clear_confirm: "確定要清除所有學習歷程資料嗎？此操作無法復原。",
+analytics_wp_tts_intro: "以下是您的弱點分析。",
+analytics_wp_tts_module: "模組：{name}，答對率 {acc}%，建議複習。",
+analytics_wp_tts_allpass: "恭喜！所有已測驗模組答對率均達 75% 以上。",
+
+// ===== Footer / Common =====
+date: "Version 2026.06.20",
+copyright: "For Educational Use Only",
+architect_label: "Architect:",
+architect_name: "Prof. Shihmin Lo",
+architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
+  footer_top: "Top ↑",
+lang_toggle: "EN", theme_toggle_label: "切換主題",
+sidebar_title: "課程目錄",
+loading: "載入中...",
+},
+en: {
+brand: "AICF",
+title: "AI Literacy Common Language Platform",
+subtitle: "Integrating DigCompEdu, UNESCO, OECD, and US-DOE to build a shared AI literacy language for principals, teachers, students, and families/industry",
+nav_modules: "Module Index", nav_prev: "Previous", nav_next: "Next", nav_home: "Home",
+key_terms: "Key Terms", flip_prompt: "Click to flip",
+flip_status: "Read {read} / Shown {shown} / Total {total}",
+flip_next: "Next", flip_retry: "Restart",
+audio_read: "Audio Guide",
+quiz_title: "Module Knowledge Check",
+quiz_status: "Correct {correct} / Answered {answered} / Total {total}",
+quiz_next: "Next", quiz_retry: "Retry",
+submit: "Submit",
+score: "Score", correct: "Correct", incorrect: "Incorrect", explanation: "Explanation",
+overview_label: "Overview",
+highlights_label: "Highlights",
+deep_dive_label: "Deep Dive",
+wrapup_label: "Wrap-up",
+
+// M0
+m0_nav: "0. Executive Summary",
+m0_title: "From Theory to Consensus: Four International References and Taiwan's Local Practice",
+m0_intro: "Artificial intelligence is reshaping how universities teach and learn, yet the term \"AI literacy\" often means different things to different stakeholders. This platform synthesizes four influential international frameworks — the EU's DigCompEdu and AI Pioneers Project, UNESCO's AI Competency Frameworks, the OECD/European Commission's joint AI Literacy Framework, and the US Department of Education's educator-centred orientation — explaining each framework's core claims, intended audience, and limitations. After reviewing all four sources, the platform integrates and compares them, then localizes the result into a common language and self-assessment tool usable by principals, teachers, students, and families/industry within Taiwan's business education context. We do not aim for assessment perfection, but for a ten-minute path to a shared, basic consensus on \"roughly where we stand\" in AI literacy — a starting point for dialogue and action.",
+m0_why: "Why a common language?",
+m0_why_desc: "Principals care about governance and risk, teachers about pedagogical integration, students about learning effectiveness, and families/industry about future employability. When these groups use different vocabularies and rating scales, communication easily breaks down. This platform is not another new standard — it is a translation map connecting four existing international frameworks and rendering them usable on Taiwanese campuses.",
+m0_modules: [
+  { num: "01", title: "DigCompEdu + AI Pioneers", desc: "The EU's educator digital competence framework and its AI supplement" },
+  { num: "02", title: "UNESCO AI Competency Framework", desc: "Student and teacher AI progression: Acquire, Deepen, Create" },
+  { num: "03", title: "OECD / European Commission Framework", desc: "Four behavioural domains and the \"metacognitive laziness\" risk" },
+  { num: "04", title: "US-DOE Orientation", desc: "A human-centred orientation for educator-led AI adoption" },
+  { num: "05", title: "Cross-Framework Integration", desc: "Mapping D1–D5 across all four sources" },
+  { num: "06", title: "Taiwan Localization & Four-Party Consensus", desc: "A common language and tiering for principals, teachers, students, families" }
+],
+m0_stats: [
+  { val: "4", label: "International Reference Frameworks" },
+  { val: "5", label: "Core Competency Dimensions" },
+  { val: "4", label: "Stakeholder Roles" },
+  { val: "3", label: "Simplified Tiers" }
+],
+m0_start: "Start Learning →",
+
+// M1
+m1_nav: "1. DigCompEdu + AI Pioneers",
+m1_title: "The EU's Educator Digital Competence Framework and Its AI Supplement",
+m1_overview: "DigCompEdu, published by the European Commission in 2017, is the European Framework for the Digital Competence of Educators, describing 6 competence areas and 22 sub-competencies. Since 2023, the AI Pioneers Project (funded by EU Erasmus+) has built on DigCompEdu, supplementing it with concrete AI guidance for vocational and adult education contexts, rather than creating an entirely new framework.",
+m1_highlights: [
+  "Six competence areas cover professional engagement, digital resources, teaching and learning, assessment, empowering learners, and facilitating learners' digital competence",
+  "Six proficiency levels from A1 Newcomer to C2 Pioneer, emphasizing gradual professional growth rather than a single milestone",
+  "The AI Pioneers Project focuses on practical AI applications in vocational and adult education settings",
+  "Emphasizes \"competence\" over mere \"tool operation,\" valuing teachers' reflection on the pedagogical decisions behind technology choices"
+],
+m1_p1: "DigCompEdu's design logic centres on teacher professional development. It is not a tool manual, but a set of reference coordinates helping teachers locate themselves and plan growth. The six areas are: Professional Engagement (using digital technologies for professional communication and collaboration), Digital Resources (sourcing, creating, and sharing teaching materials), Teaching and Learning (managing and orchestrating digital technologies in the teaching process), Assessment (using digital technologies to enhance assessment strategies), Empowering Learners (using digital technologies to foster learners' active engagement), and Facilitating Learners' Digital Competence (developing learners' own digital skills).",
+m1_p2: "The six proficiency levels — A1 Newcomer, A2 Explorer, B1 Integrator, B2 Expert, C1 Leader, C2 Pioneer — are not meant to label teachers as \"good\" or \"bad,\" but to describe a typical professional growth trajectory: from awareness of technology, to integrated use, to leading others and experimenting with innovation. Critically, there is no mandated timeline between levels — a teacher might be B2 in one area and still A2 in another. This flexibility is intentional.",
+m1_p3: "The AI Pioneers Project extends DigCompEdu for the generative AI era rather than replacing it. It focuses specifically on vocational education and training (VET) and adult education, offering concrete approaches and case studies for integrating AI tools (conversational assistants, automated assessment, personalized learning path generation) into the existing six areas. This is a useful reminder: emerging technology frameworks are usually built atop established, mature frameworks rather than invented from scratch — an important design consideration for Taiwan as it introduces AI frameworks on campus.",
+m1_wrapup: "DigCompEdu offers a six-area, six-level framework, validated across European countries and focused on teacher professional growth, while the AI Pioneers Project extends it for the generative AI era in vocational education. Together they suggest that AI literacy growth should be embedded within existing teaching professional development, not built as a separate silo.",
+m1_terms: [
+  { front: "DigCompEdu", back: "The European Framework for the Digital Competence of Educators, published by the European Commission in 2017, with 6 competence areas and 22 sub-competencies" },
+  { front: "Six Competence Areas", back: "Professional Engagement, Digital Resources, Teaching and Learning, Assessment, Empowering Learners, Facilitating Learners' Digital Competence" },
+  { front: "A1–C2 Six Levels", back: "Newcomer → Explorer → Integrator → Expert → Leader → Pioneer, describing a gradual professional growth trajectory" },
+  { front: "AI Pioneers Project", back: "An EU Erasmus+ funded project building on DigCompEdu, supplementing AI application guidance for vocational and adult education" },
+  { front: "Empowering Learners", back: "One of DigCompEdu's six areas, referring to using digital technologies to foster learners' personalization and active engagement" },
+  { front: "Flexible Leveling", back: "Teachers may sit at different levels across different areas; the framework does not require uniform progression" }
+],
+m1_q: [
+  { q: "Who published the DigCompEdu framework?", opts: ["UNESCO","The European Commission","The US Department of Education","The World Economic Forum"], ans: _A1, exp: "DigCompEdu was published by the European Commission in 2017." },
+  { q: "How many proficiency levels does DigCompEdu define?", opts: ["3","4","6","8"], ans: _A2, exp: "There are 6 levels, from A1 Newcomer to C2 Pioneer." },
+  { q: "Which of the following is NOT one of DigCompEdu's six competence areas?", opts: ["Professional Engagement","Digital Resources","Programming Proficiency","Assessment"], ans: _A2, exp: "The six areas are Professional Engagement, Digital Resources, Teaching and Learning, Assessment, Empowering Learners, and Facilitating Learners' Digital Competence — \"Programming Proficiency\" is not among them." },
+  { q: "What is the relationship between the AI Pioneers Project and DigCompEdu?", opts: ["Two entirely independent, unrelated frameworks","AI Pioneers replaces DigCompEdu","AI Pioneers is an AI-focused supplement built on DigCompEdu","DigCompEdu is a simplified version of AI Pioneers"], ans: _A2, exp: "The AI Pioneers Project builds on DigCompEdu, supplementing it with AI application guidance for vocational and adult education." },
+  { q: "What does DigCompEdu's C2 Pioneer level represent?", opts: ["A teacher just starting to engage with digital technology","A teacher who integrates but has not yet deepened their use","A teacher who leads and innovates within the area","A teacher who does not use digital technology at all"], ans: _A2, exp: "C2 Pioneer is the highest level, representing leadership, experimentation, and innovation in that area." }
+],
+
+// M2
+m2_nav: "2. UNESCO AI Competency Framework",
+m2_title: "UNESCO's AI Competency Frameworks for Students and Teachers",
+m2_overview: "In 2024, UNESCO published two companion documents: the AI Competency Framework for Students and the AI Competency Framework for Teachers. Both share the same progression logic — Acquire, Deepen, Create — emphasizing that AI literacy is not just about \"knowing how to use it,\" but a journey from understanding, through application, to critical creation.",
+m2_highlights: [
+  "Three-tier progression: Acquire (foundational awareness), Deepen (application and evaluation), Create (design and innovation)",
+  "The student framework's four dimensions: human-centred mindset, ethics of AI, AI techniques and applications, AI system design",
+  "The teacher framework adds five pillars: human-centred mindset, ethical and safe AI use, AI foundations and applications, AI pedagogy, and professional development",
+  "Both documents begin from \"human-centredness\" rather than from technical capability"
+],
+m2_p1: "The most distinctive feature of UNESCO's two frameworks is placing \"human-centred mindset\" at the very top, rather than starting with technical operation. This reflects UNESCO's consistent educational philosophy: technology should serve holistic human development, not the reverse. The student framework's four dimensions — human-centred mindset, ethics of AI, AI techniques and applications, AI system design — are deliberately ordered this way as a statement of values.",
+m2_p2: "The \"Acquire, Deepen, Create\" three-tier progression differs from DigCompEdu's six-level logic; UNESCO opts for a simpler three-stage description. The Acquire stage focuses on basic awareness (knowing what AI is, what it can do, and its risks); the Deepen stage focuses on contextualized application and critical evaluation (selecting appropriate tools for specific tasks and assessing whether outputs are trustworthy); the Create stage focuses on active design and innovation (participating in, adjusting, or even questioning the decision logic of existing AI systems).",
+m2_p3: "The teacher framework adds \"AI pedagogy\" and \"professional development\" pillars on top of the student framework's foundation, reflecting teachers' dual role: not merely AI users, but mediators guiding students toward AI literacy. This is why teacher competence in business courses adopting AI tools is often more complex than mere \"tool proficiency\" — teachers need both usage skills and pedagogical translation skills.",
+m2_wrapup: "UNESCO's frameworks offer a concise, human-centred three-stage progression language, and through companion student and teacher documents, clearly delineate competency priorities by role — making them among the most widely cited references for AI education literacy internationally.",
+m2_terms: [
+  { front: "Acquire", back: "The first stage of UNESCO's three-tier progression, focused on basic awareness and understanding" },
+  { front: "Deepen", back: "The second stage, focused on contextualized application and critical evaluation of AI outputs" },
+  { front: "Create", back: "The third stage, focused on actively designing, adjusting, or even questioning AI systems" },
+  { front: "Human-Centred Mindset", back: "The top-priority dimension shared by both student and teacher frameworks, emphasizing technology in service of people" },
+  { front: "AI Pedagogy", back: "A pillar unique to the teacher framework, referring to the pedagogical skill of guiding students toward AI literacy" },
+  { front: "AI System Design", back: "The fourth dimension of the student framework, referring to the ability to participate in or understand AI system design logic" }
+],
+m2_q: [
+  { q: "What is the correct order of UNESCO's three-tier progression?", opts: ["Cognition, Application, Mastery","Acquire, Deepen, Create","Beginner, Intermediate, Advanced","Awareness, Integration, Leadership"], ans: _A1, exp: "The three tiers are Acquire, Deepen, Create." },
+  { q: "What dimension do both UNESCO's student and teacher frameworks prioritize above all others?", opts: ["Programming skills","Human-centred mindset","Hardware operation skills","Marketing application skills"], ans: _A1, exp: "Both frameworks list \"human-centred mindset\" as the top-priority dimension, reflecting UNESCO's educational philosophy." },
+  { q: "What pillars does the teacher framework add beyond the student framework?", opts: ["Ethics of AI","AI techniques and applications","AI pedagogy and professional development","Human-centred mindset"], ans: _A2, exp: "The teacher framework adds the \"AI pedagogy\" and \"professional development\" pillars." },
+  { q: "What is the core feature of the \"Deepen\" stage?", opts: ["No engagement with AI at all","Basic awareness and understanding","Contextualized application and critical evaluation","Designing an entirely new AI system"], ans: _A2, exp: "The Deepen stage emphasizes applying AI within specific contexts and critically evaluating its outputs." },
+  { q: "In what year were UNESCO's AI competency frameworks published?", opts: ["2018","2020","2024","2026"], ans: _A2, exp: "Both the student and teacher AI competency frameworks were published by UNESCO in 2024." }
+],
+
+// M3
+m3_nav: "3. OECD / European Commission Framework",
+m3_title: "The Joint OECD–European Commission AI Literacy Framework",
+m3_overview: "The OECD and the European Commission jointly developed an AI literacy framework built around four behavioural domains: Engaging with AI, Creating with AI, Managing AI risks, and Designing AI systems. The framework also responds to a growing academic concern — \"metacognitive laziness\" — the idea that over-reliance on AI may erode users' own critical thinking and independent judgment.",
+m3_highlights: [
+  "Jointly developed by the OECD and the European Commission, not by the OECD alone",
+  "Four behavioural domains: Engaging, Creating, Managing risk, Designing systems",
+  "Responds to academic concern about \"metacognitive laziness,\" though the concept is not OECD's exclusive invention",
+  "Emphasizes balancing efficiency against critical thinking, rather than promoting unconditional trust in AI tools"
+],
+m3_p1: "A common misconception needs clarifying first: this framework was not unilaterally created by the OECD, but is a joint product of OECD and European Commission collaboration — which also explains its strong alignment in spirit with other EU digital literacy frameworks such as DigCompEdu, sharing the same emphasis on human-centredness, critical thinking, and contextualized application.",
+m3_p2: "Among the four behavioural domains, \"Engaging with AI\" is the most foundational level, referring to the ability to recognize AI systems and understand their basic operating logic and limitations; \"Creating with AI\" further requires integrating AI tools into tasks such as creation, analysis, and decision-making; \"Managing AI risks\" focuses on identifying bias, privacy, and trustworthiness risks and taking corresponding action; \"Designing AI systems\" is the most advanced domain, involving participation in constructing and adjusting AI systems themselves.",
+m3_p3: "\"Metacognitive laziness\" is a concept that has gained academic attention in recent literature (such as a study published in late 2024, arXiv:2412.09315), referring to the gradual decline in users' willingness and ability to think, verify, and question independently when they over-rely on AI for answers. This concept was not exclusively coined by the OECD — it is widely discussed across academia, and OECD's Digital Education Outlook series cites and echoes this concern, but treating it as OECD's sole or exclusive framework standard would be inaccurate. For educators, this is a reminder to deliberately preserve \"AI-free\" critical thinking exercises when designing AI-integrated learning activities.",
+m3_wrapup: "The OECD/EC framework describes a progressive AI literacy path through four behavioural domains, while also reminding us to watch for the \"metacognitive laziness\" risk of over-reliance on AI — an issue requiring ongoing attention from the broader academic community, not a proprietary claim of any single institution.",
+m3_terms: [
+  { front: "Engaging with AI", back: "The most foundational domain of the OECD/EC framework, referring to recognizing AI systems and understanding their logic and limitations" },
+  { front: "Creating with AI", back: "The ability to integrate AI tools into tasks such as creation, analysis, and decision-making" },
+  { front: "Managing AI Risks", back: "The ability to identify bias, privacy, and trustworthiness risks and take corresponding action" },
+  { front: "Designing AI Systems", back: "The most advanced domain, involving participation in constructing and adjusting AI systems" },
+  { front: "Metacognitive Laziness", back: "An academically discussed risk of declining independent thinking, verification, and questioning due to AI over-reliance — not exclusive to OECD" },
+  { front: "OECD–EC Joint Development", back: "Clarifies that the framework is a joint product of OECD and European Commission collaboration, not OECD alone" }
+],
+m3_q: [
+  { q: "Who actually developed the OECD AI literacy framework?", opts: ["The OECD alone","Jointly by the OECD and the European Commission","The European Commission alone","Led by the United Nations"], ans: _A1, exp: "This framework is a joint product of OECD and European Commission collaboration." },
+  { q: "Which of the following is NOT one of the framework's four behavioural domains?", opts: ["Engaging with AI","Creating with AI","Managing AI risks","Memorizing AI algorithm formulas"], ans: _A3, exp: "The four domains are Engaging, Creating, Managing risk, and Designing systems — memorizing formulas is not among them." },
+  { q: "What is the correct understanding of \"metacognitive laziness\"?", opts: ["A concept exclusively coined by and proprietary to the OECD framework","A widely discussed academic risk that OECD reports cite and echo","A psychology term entirely unrelated to AI literacy","A concept applicable only to children's education"], ans: _A1, exp: "Metacognitive laziness is widely discussed in academia; OECD reports cite and echo it, but it is not OECD's exclusive or original concept." },
+  { q: "What distinguishes \"Designing AI systems\" from the other three domains?", opts: ["It is the most basic and easiest to achieve","It is entirely unrelated to the other domains","It is the most advanced, involving participation in system construction logic","It applies only to engineers, not general users"], ans: _A2, exp: "Designing AI systems is the most advanced domain among the four, involving participation in building and adjusting the system itself." },
+  { q: "What is a suitable educator response to the metacognitive laziness risk?", opts: ["Completely ban students from using any AI tools","Deliberately preserve AI-free critical thinking exercises in learning design","Do nothing and trust students to self-regulate","Only mention it once before final exams"], ans: _A1, exp: "It is recommended to deliberately preserve independent thinking, verification, and questioning exercises when designing teaching activities, balancing AI use with critical thinking." }
+],
+
+// M4
+m4_nav: "4. US-DOE Orientation",
+m4_title: "The US Department of Education's \"Always Center Educators\" Orientation",
+m4_overview: "In May 2023, the US Department of Education published a report titled \"Artificial Intelligence and the Future of Teaching and Learning,\" introducing the \"Always Center Educators\" (ACE) orientation. An important clarification: ACE is a policy spirit and value orientation, not a formal, numbered list of principles.",
+m4_highlights: [
+  "ACE is an orientation, not a formally numbered list of core principles",
+  "Core spirit: educators should retain decision-making agency; AI assists rather than replaces",
+  "Emphasizes \"human-in-the-loop\" as a precondition for designing and adopting AI tools",
+  "The report acknowledges both risks and opportunities, calling for a cautious and gradual adoption pace"
+],
+m4_p1: "Many secondary sources describing this US-DOE report mistakenly portray ACE as a \"five principles\" or \"seven core elements\" checklist. However, reviewing the original report reveals that ACE is more accurately positioned as an orientation and value stance running throughout the document, not a list one can check off item by item. This clarification matters because it affects how we \"use\" this document — not as a compliance checklist, but as a lens for examining whether an AI education policy or tool-adoption plan genuinely places educators' professional judgment at its centre.",
+m4_p2: "The core spirit of the ACE orientation can be summarized in several recurring themes: educators should retain substantive decision-making power in selecting, evaluating, and adjusting AI tools, rather than passively accepting pre-set solutions from technology companies or administrative units; AI should be designed to augment educators' professional capabilities, not replace their judgment; any AI system should preserve \"human-in-the-loop\" design, ensuring that critical educational decisions (such as student assessment and personalized learning paths) are ultimately overseen by humans.",
+m4_p3: "The report also honestly presents a stance where opportunity and risk coexist — affirming AI's potential for personalized learning and administrative efficiency, while warning of risks such as data privacy, algorithmic bias, and over-automation. This \"cautious optimism\" tone aligns with the human-centred spirit shared by the three frameworks discussed earlier (DigCompEdu, UNESCO, OECD) — though they come from different institutions and use different vocabularies, all four frameworks consistently place human judgment and agency above the AI system.",
+m4_wrapup: "The US-DOE's ACE orientation reminds us that the evaluation criterion for any AI education policy should return to a core question — whether educators' professional judgment is preserved and strengthened — rather than being reduced to a simple checklist.",
+m4_terms: [
+  { front: "ACE Orientation", back: "Always Center Educators — a policy spirit, not a formally numbered list of principles" },
+  { front: "Human-in-the-Loop", back: "A design principle ensuring critical educational decisions are ultimately overseen by humans" },
+  { front: "Cautious Optimism", back: "The tone of the US-DOE report, presenting both opportunities and risks of AI in education" },
+  { front: "Educator Decision Agency", back: "A core ACE theme: educators should retain substantive decision-making power in selecting and adjusting AI tools" },
+  { front: "Report Publication Date", back: "May 2023, \"Artificial Intelligence and the Future of Teaching and Learning\"" },
+  { front: "Common Misreading", back: "Mistaking ACE for a formally numbered \"five principles\" or \"core elements\" checklist, when it is actually an orientation running throughout the report" }
+],
+m4_q: [
+  { q: "What is ACE's correct positioning in the US-DOE report?", opts: ["A formally numbered list of five core principles","A policy orientation and value stance running throughout the report","A federally mandated US law","A technical operations manual"], ans: _A1, exp: "ACE is an orientation, not a formally numbered, itemized list of principles." },
+  { q: "What is the core spirit of the ACE orientation?", opts: ["AI should completely replace teachers' judgment","Educators should retain decision-making agency; AI assists rather than replaces","Students should decide independently whether to use AI","Schools should ban all AI tools"], ans: _A1, exp: "ACE's core spirit is that educators retain decision-making agency while AI plays a supporting role." },
+  { q: "What does \"human-in-the-loop\" mean?", opts: ["AI systems operate fully automatically with no human intervention","Critical educational decisions are ultimately overseen by humans","Only engineers may operate AI systems","Students must queue for computer lab access"], ans: _A1, exp: "Human-in-the-loop emphasizes that critical decisions (such as assessment) remain under human oversight rather than being fully automated by AI." },
+  { q: "When was this US-DOE report published?", opts: ["2020","May 2023","2025","2026"], ans: _A1, exp: "The report \"Artificial Intelligence and the Future of Teaching and Learning\" was published in May 2023." },
+  { q: "What is the report's stance toward AI's opportunities and risks in education?", opts: ["Only discusses opportunities, ignoring risks entirely","Only discusses risks, entirely dismissing opportunities","Cautiously optimistic, presenting both opportunities and risks","Refuses to take a position, remaining entirely silent"], ans: _A2, exp: "The report presents a cautiously optimistic stance, affirming potential while warning of risks such as privacy and bias." }
+],
+
+// M5
+m5_nav: "5. Cross-Framework Integration",
+m5_title: "Five Dimensions D1–D5: Shared Logic Across the Frameworks",
+m5_overview: "Comparing the four frameworks reveals that, despite differences in vocabulary and tiering, they share a highly consistent set of core concerns. This platform integrates them into five common dimensions (D1–D5), forming the structural basis for Taiwan's localized common language.",
+m5_highlights: [
+  "D1 AI Foundational Literacy maps to DigCompEdu's Digital Resources, UNESCO's Acquire stage, and OECD's Engaging domain",
+  "D2 Pedagogical/Applied Integration maps to DigCompEdu's Teaching and Learning, UNESCO's Deepen stage, and OECD's Creating domain",
+  "D3 Ethics and Critical Judgment maps to UNESCO's Ethics of AI, OECD's metacognitive laziness warning, and US-DOE's human-in-the-loop",
+  "D4 Governance and Risk Management maps to OECD's Managing risk domain and US-DOE's educator decision agency",
+  "D5 Continuous Growth and Innovation maps to DigCompEdu's C1–C2 Leader/Pioneer levels and UNESCO's Create stage"
+],
+m5_p1: "When the four frameworks are placed side by side, despite their distinct development contexts and emphases, a shared underlying logic emerges: competency development begins with foundational awareness, progresses toward applied integration, deepens into ethical and critical judgment, requires governance and risk management as a support structure, and ultimately points toward continuous growth. These five stages are not linear exam checkpoints but five coexisting, mutually reinforcing dimensions.",
+m5_p2: "Take D1 AI Foundational Literacy as an example: it maps to DigCompEdu's \"Digital Resources\" area, UNESCO's \"Acquire\" stage, and OECD's \"Engaging with AI\" domain — different vocabularies, but all pointing to the same starting point: knowing what AI is, what it can do, and where its limitations lie. D2 Pedagogical/Applied Integration maps to DigCompEdu's \"Teaching and Learning,\" UNESCO's \"Deepen\" stage, and OECD's \"Creating with AI\" — all three share a concern for whether AI tools can be effectively integrated into specific task contexts.",
+m5_p3: "D3 Ethics and Critical Judgment integrates UNESCO's \"Ethics of AI\" dimension, OECD's warning about \"metacognitive laziness,\" and US-DOE's \"human-in-the-loop\" design principle — together reminding us that AI literacy is not just technical capability, but also knowing when to question, verify, and insist on human judgment. D4 Governance and Risk Management echoes OECD's \"Managing risk\" domain and US-DOE's emphasis on \"educator decision agency,\" focusing on organizational-level policy and support mechanisms. D5 Continuous Growth and Innovation maps to DigCompEdu's top two levels (C1 Leader, C2 Pioneer) and UNESCO's \"Create\" stage, pointing to the idea that competency development has no endpoint, but is an ongoing journey of refinement.",
+m5_wrapup: "D1–D5 are not a new framework, but the \"greatest common factor\" of the four international references — enabling principals, teachers, students, and families to discuss AI literacy using the same five dimensions, while still being able to trace back to the original frameworks for detail.",
+m5_terms: [
+  { front: "D1 AI Foundational Literacy", back: "The starting dimension: knowing what AI is, what it can do, and where its limitations lie" },
+  { front: "D2 Pedagogical/Applied Integration", back: "Whether AI tools can be effectively integrated into specific tasks and teaching contexts" },
+  { front: "D3 Ethics and Critical Judgment", back: "The ability to know when to question, verify, and insist on human judgment" },
+  { front: "D4 Governance and Risk Management", back: "Organizational-level AI usage policy, risk identification, and support mechanisms" },
+  { front: "D5 Continuous Growth and Innovation", back: "Competency development has no endpoint — an ongoing journey of refinement, leadership, and innovation" },
+  { front: "Greatest Common Factor Logic", back: "D1–D5 integrate the shared concerns of all four frameworks rather than establishing a new standard" }
+],
+m5_q: [
+  { q: "What does D1 AI Foundational Literacy primarily correspond to across the four frameworks?", opts: ["DigCompEdu Digital Resources, UNESCO Acquire, OECD Engaging","DigCompEdu C2, UNESCO Create, OECD Designing systems","Only the US-DOE orientation","Unrelated to any of the four frameworks"], ans: _A0, exp: "D1 maps to DigCompEdu's Digital Resources area, UNESCO's Acquire stage, and OECD's Engaging with AI domain." },
+  { q: "What does D3 Ethics and Critical Judgment integrate?", opts: ["Only DigCompEdu's Assessment area","UNESCO's Ethics of AI, OECD's metacognitive laziness warning, and US-DOE's human-in-the-loop","Only UNESCO's human-centred mindset","Only OECD's Designing systems domain"], ans: _A1, exp: "D3 integrates UNESCO's Ethics of AI dimension, OECD's metacognitive laziness warning, and US-DOE's human-in-the-loop principle." },
+  { q: "What is the purpose of the D1–D5 five dimensions?", opts: ["To replace the four international frameworks as a new standard","To serve as the greatest common factor of the four frameworks, providing a shared dialogue language","Only for academic research, unsuitable for practical adoption","Only applicable to STEM fields, not business education"], ans: _A1, exp: "D1–D5 integrate the four frameworks to serve as a common language, not a replacement." },
+  { q: "What original concepts does D5 Continuous Growth and Innovation correspond to?", opts: ["DigCompEdu A1 and UNESCO's Acquire stage","DigCompEdu C1–C2 and UNESCO's Create stage","Only OECD's Managing risk domain","Only US-DOE's cautious optimism stance"], ans: _A1, exp: "D5 maps to DigCompEdu's top two levels (C1, C2) and UNESCO's Create stage." }
+],
+
+// M6
+m6_nav: "6. Taiwan Localization & Four-Party Consensus",
+m6_title: "Principal · Teacher · Student · Family: A Common AI Literacy Language for Taiwan's Business Courses",
+m6_overview: "Localizing the D1–D5 dimensions for Taiwan's business education context requires confronting a reality: principals (school administrators), teachers, students, and families/industry have different concerns and need different levels of granularity. This module explains how, without pursuing assessment perfection, we can build a simplified but communicable tiering language for all four parties, mapped to the four-party self-assessment tool in this platform's Interactive Lab.",
+m6_highlights: [
+  "Teachers and students use a full six-tier scale (following DigCompEdu's A1–C2 logic), as both are frontline actors in AI classroom adoption",
+  "Principals and families/industry use a simplified three-tier scale (Initial Awareness / Basic Support or Understanding / Active Governance or Advocacy), lowering the participation barrier",
+  "All four parties share the same D1–D5 dimension language, differing only in tiering granularity, ensuring dialogue stays aligned",
+  "The self-assessment tool deliberately avoids business-specific scenario customization, preserving general descriptions to maintain cross-domain comparability"
+],
+m6_p1: "Why do teachers and students use six tiers while principals and families use three? Because teachers and students are the most direct actors in classroom AI adoption, requiring finer self-positioning to plan individual growth paths — the six-tier scale echoes DigCompEdu's spirit. Principals and families/industry play more of a \"supporter\" and \"overseer\" role; what they need is not precise self-positioning, but a quick read on \"whether the current state is sufficient to support/oversee classroom AI adoption.\" A three-tier simplification (Initial Awareness, Basic Support or Understanding, Active Governance or Leadership/Advocacy) suffices for this communication purpose.",
+m6_p2: "All four parties share the D1 (foundational literacy), D2 (applied integration), D3 (ethical judgment), D4 (governance and risk), D5 (growth and innovation) dimension language. This means that when a teacher says \"I'm at B1 on D3 ethical judgment\" and a principal says \"I'm at Basic Support on D3,\" both at least know they are discussing the same thing — rather than communicating with vague terms like \"is AI literacy good or not,\" while actually referring to entirely different aspects.",
+m6_p3: "This platform deliberately does not customize the self-assessment tool into specific business scenarios such as financial statement analysis or marketing planning, instead preserving general descriptions. The reasoning behind this design choice: while over-contextualization fits a specific course more closely, it sacrifices cross-domain, cross-course comparability — and the goal of \"building a common language\" precisely requires descriptive language that is broadly applicable and not hostage to a particular context. Teachers can map the self-assessment results to their own course's specific cases when interpreting them.",
+m6_wrapup: "The key to Taiwan localization is not inventing a new framework, but — while respecting the differing roles of the four parties — building a low-barrier communication mechanism that quickly achieves basic consensus, using the same D1–D5 language at different tiering granularities. To experience the actual quantitative assessment tool, please visit the Interactive Lab module.",
+m6_terms: [
+  { front: "Four-Party Ecosystem", back: "The AI adoption ecosystem jointly formed by principals (school administrators), teachers, students, and families/industry/society" },
+  { front: "Six-Tier / Three-Tier Dual Design", back: "Teachers and students use full six tiers; principals and families use simplified three tiers, reflecting role differences" },
+  { front: "Initial Awareness / Basic Support / Active Governance", back: "The three-tier wording for the principal track" },
+  { front: "Initial Awareness / Understanding & Cooperation / Active Advocacy", back: "The three-tier wording for the family/industry track" },
+  { front: "General Description Principle", back: "The self-assessment tool deliberately avoids business-specific scenario customization to preserve cross-domain comparability" },
+  { front: "Basic Consensus, Not Perfect Assessment", back: "This platform's design philosophy: the goal is a starting point for dialogue, not an academically precise measurement instrument" }
+],
+m6_q: [
+  { q: "Why do teachers and students use six tiers while principals and families use three?", opts: ["Six tiers are simply more accurate, with no other reason","Teachers/students are frontline actors needing fine positioning; principals/families are supporters/overseers needing quick judgment","Three tiers reflect lower ability of principals and parents","This is a random decision with no design logic"], ans: _A1, exp: "The six-tier/three-tier dual design reflects role differences: frontline actors need fine self-positioning, while supporters/overseers need quick judgment." },
+  { q: "What is the main purpose of all four parties sharing the D1–D5 dimension language?", opts: ["To give everyone exactly the same score","To ensure all parties discuss the same dimension, avoiding talking past each other","To rank and compare different stakeholders","To replace the school's existing evaluation system"], ans: _A1, exp: "Sharing the dimension language ensures communication stays focused on the same aspect, rather than each party talking past the others." },
+  { q: "Why doesn't this platform's self-assessment tool customize scenarios like financial analysis or marketing planning?", opts: ["Because the designer lacks a business background","Preserving general descriptions maintains cross-domain comparability, which is core to building a common language","Business fields don't need AI literacy","Customized scenarios are technically infeasible"], ans: _A1, exp: "General descriptions are preserved to avoid sacrificing cross-domain, cross-course comparability, aligning with the common-language design goal." },
+  { q: "What is the design philosophy of this platform's four-party self-assessment tool?", opts: ["Pursuing academically perfect precision","Building basic consensus and a starting point for dialogue, not perfect assessment","Serving as a formal HR evaluation basis","For principals' exclusive use only"], ans: _A1, exp: "The design philosophy is explicitly about building a common language and basic consensus, not pursuing perfection or formal evaluation." }
+],
+
+// M7 Lab
+mlab_nav: "7. Interactive Lab",
+mlab_title: "Interactive Lab: Four-Party AI Literacy Self-Assessment",
+mlab_desc: "This lab provides quantitative self-assessment questionnaires for four roles (Principal / Teacher / Student / Family & Industry), scored on a Likert scale across the D1–D5 dimensions and visualized as a radar chart — a practical tool for the four-party common language. Please select your role to begin; the process takes about 5–8 minutes.",
+mlab_labs: [
+  { title: "Role Assessment: Principal/Administrator", desc: "8 simplified questions (three-tier logic) for a quick read on AI literacy from a governance perspective" },
+  { title: "Role Assessment: Teacher", desc: "10 full questions (six-tier logic) mapped to pedagogical integration and professional growth dimensions" },
+  { title: "Role Assessment: Student", desc: "10 full questions (six-tier logic) mapped to learning and application dimensions" },
+  { title: "Role Assessment: Family/Industry/Society", desc: "8 simplified questions (three-tier logic) for a quick read on AI literacy from an external supporter perspective" }
+],
+mlab_select_role: "Please select your role",
+mlab_role_principal: "Principal/Administrator", mlab_role_teacher: "Teacher", mlab_role_student: "Student", mlab_role_parent: "Family/Industry/Society",
+mlab_start_assess: "Start Assessment",
+mlab_back_roles: "← Choose a different role",
+mlab_progress: "Question {cur} / {total}",
+mlab_submit_assess: "View Results",
+mlab_result_title: "Your AI Literacy Radar",
+mlab_result_desc: "Below are your self-assessment results across the D1–D5 dimensions, averaged on a 1–6 scale.",
+mlab_overall_label: "Overall AI Literacy Score",
+mlab_level_low: "Initial Awareness", mlab_level_mid: "Basic Support / Understanding", mlab_level_high: "Active Governance / Advocacy",
+mlab_retry_assess: "Retake Assessment",
+mlab_scale: ["Almost Never","Rarely","Occasionally","Often","Most of the Time","Almost Always"],
+
+// M8 Resources
+mres_nav: "8. Learning Resources",
+mres_title: "External Learning Resources",
+mres_desc: "Below are links to the original documents and further reading for all four frameworks, for anyone wishing to study the primary sources in greater depth.",
+mres_groups: [
+  { group: "EU DigCompEdu / AI Pioneers", links: [
+    { label: "DigCompEdu Official Framework (EU Joint Research Centre)", url: "https://joint-research-centre.ec.europa.eu/digcompedu_en" },
+    { label: "AI Pioneers Project Official Site", url: "https://aipioneers.org/" }
+  ]},
+  { group: "UNESCO", links: [
+    { label: "UNESCO AI Competency Framework for Students", url: "https://www.unesco.org/en/digital-education/artificial-intelligence" },
+    { label: "UNESCO AI Competency Framework for Teachers", url: "https://www.unesco.org/en/digital-education/artificial-intelligence" }
+  ]},
+  { group: "OECD / European Commission", links: [
+    { label: "OECD AI Literacy Framework", url: "https://www.oecd.org/en/topics/sub-issues/ai-literacy.html" },
+    { label: "OECD Digital Education Outlook", url: "https://www.oecd.org/en/publications/oecd-digital-education-outlook-2023_c74f03de-en.html" }
+  ]},
+  { group: "US Department of Education", links: [
+    { label: "Artificial Intelligence and the Future of Teaching and Learning (2023)", url: "https://tech.ed.gov/ai/" }
+  ]}
+],
+
+// M9 Analytics
+analytics_title: "Learning Analytics", analytics_desc: "The following records your learning activity on this platform, stored only in your current browser locally and never uploaded to any server.",
+analytics_form_title: "Fill in your information to unlock export",
+analytics_group: "Group", analytics_group_select: "Please select", analytics_dept: "Department/Year",
+analytics_dept_ph: "e.g. IBS3",
+analytics_id: "Student ID", analytics_id_ph: "e.g. 113212599",
+analytics_name_en: "English Name", analytics_name_en_ph: "e.g. Shihmin Lo",
+analytics_name_zh: "Chinese Name", analytics_name_zh_ph: "e.g. Wang A-Chi",
+analytics_export_csv: "Export CSV Record",
+analytics_fill_required: "Please complete all fields to unlock export",
+analytics_refresh_prompt: "Refresh saved records?",
+group_options: ["G1","G2","G3","G4","G5","G6","G7","G8","G9","G10","G11","G12","Others"],
+analytics_total_time: "Total Study Time", analytics_total_clicks: "Total Interactions",
+analytics_overall_acc: "Overall Quiz Accuracy",
+analytics_card_usage: "Flashcard Usage",
+analytics_module: "Module", analytics_time: "Time Spent",
+analytics_clicks: "Clicks", analytics_acc: "Accuracy",
+analytics_correct_ans_total: "Correct / Answered / Total",
+analytics_cards_read_total: "Read / Total",
+analytics_no_data: "Not yet tested", analytics_sec: "sec", analytics_times: "times",
+analytics_progress_title: "Overall Learning Progress",
+analytics_progress_visited: "Visited", analytics_progress_not_visited: "Not Visited",
+analytics_progress_quiz_done: "Quiz Done",
+analytics_wp_title: "Weakness Analysis & Review Suggestions",
+analytics_wp_incorrect: "Incorrect questions:",
+analytics_wp_goto: "→ Go review this module",
+analytics_wp_allpass: "All tested modules scored above 75% accuracy — excellent performance!",
+analytics_wp_saved: "Learning history is auto-saved in this browser",
+analytics_wp_clear: "🗑 Clear History",
+analytics_wp_clear_confirm: "Are you sure you want to clear all learning history? This cannot be undone.",
+analytics_wp_tts_intro: "Here is your weakness analysis.",
+analytics_wp_tts_module: "Module: {name}, accuracy {acc}%, review recommended.",
+analytics_wp_tts_allpass: "Congratulations! All tested modules scored above 75% accuracy.",
+
+// Footer / Common
+date: "Version 2026.06.20",
+copyright: "For Educational Use Only",
+architect_label: "Architect:",
+architect_name: "Prof. Shihmin Lo",
+architect_url: "https://www.ibs.ncnu.edu.tw/index.php/faculty/tenured-professor/299-smlo",
+  footer_top: "Top ↑",
+lang_toggle: "中文", theme_toggle_label: "Toggle Theme",
+sidebar_title: "Course Index",
+loading: "Loading...",
+}
+};
+
+/* ============ TTS ============ */
+function pickVoice(lang) {
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if (lang === 'zh') {
+    return voices.find(v => /Yating/i.test(v.name)) || voices.find(v => /zh-TW|zh_TW/i.test(v.lang)) || voices.find(v => /zh/i.test(v.lang));
+  }
+  return voices.find(v => /Daniel/i.test(v.name)) || voices.find(v => /en-GB/i.test(v.lang)) || voices.find(v => /en/i.test(v.lang));
+}
+function speakText(text, lang, onEnd) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === 'zh' ? 'zh-TW' : 'en-GB';
+  const v = pickVoice(lang);
+  if (v) u.voice = v;
+  u.rate = 0.98;
+  if (onEnd) u.onend = onEnd;
+  window.speechSynthesis.speak(u);
+}
+
+/* ============ H2 ============ */
+const H2 = ({ icon, num, children }) => (
+  <h2 className="flex items-center gap-3 text-2xl md:text-3xl font-serif font-black text-[#004030] dark:text-[#D8C3A5] mt-10 mb-4">
+    {icon && React.createElement(icon, { className: "w-7 h-7 shrink-0" })}
+    {num && <span className="text-sm font-sans font-bold bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] rounded-full w-7 h-7 flex items-center justify-center shrink-0">{num}</span>}
+    <span>{children}</span>
+  </h2>
+);
+
+/* ============ LinkCard ============ */
+const LinkCard = ({ label, url }) => (
+  <a href={url} target="_blank" rel="noopener noreferrer"
+    className="flex items-center justify-between gap-3 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#004030] dark:hover:border-[#D8C3A5] hover:shadow-md transition-all group">
+    <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-[#004030] dark:group-hover:text-[#D8C3A5]">{label}</span>
+    <IconArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-300 shrink-0 group-hover:translate-x-1 transition-transform" />
+  </a>
+);
+
+/* ============ FlipCardDeck ============ */
+const FlipCardDeck = ({ terms, t, moduleId, onCardRead }) => {
+  const [groupIdx, setGroupIdx] = useState(0);
+  const [flipped, setFlipped] = useState({});
+  const [readSet, setReadSet] = useState(new Set());
+  const [shownSet, setShownSet] = useState(new Set());
+
+  const [shuffledOrder] = useState(() => [...Array(terms.length).keys()].sort(() => Math.random() - 0.5));
+
+  const groupSize = 2;
+  const totalGroups = Math.ceil(terms.length / groupSize);
+  const startIdx = groupIdx * groupSize;
+  const currentCardIndices = shuffledOrder.slice(startIdx, startIdx + groupSize);
+
+  useEffect(() => {
+    const newShown = new Set(shownSet);
+    currentCardIndices.forEach(idx => newShown.add(idx));
+    if (newShown.size !== shownSet.size) setShownSet(newShown);
+  }, [groupIdx]);
+
+  const handleFlip = (origIdx) => {
+    setFlipped(f => ({ ...f, [origIdx]: !f[origIdx] }));
+    if (!readSet.has(origIdx)) {
+      const newRead = new Set(readSet); newRead.add(origIdx); setReadSet(newRead);
+      if (onCardRead) onCardRead(moduleId, newRead.size, shownSet.size, terms.length);
+    }
+  };
+
+  const statusText = t.flip_status.replace('{read}', readSet.size).replace('{shown}', shownSet.size).replace('{total}', terms.length);
+
+  return (
+    <div className="mt-8" key={`cards-${moduleId}`}>
+      <h3 className="text-lg font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300 mb-2">{t.key_terms}</h3>
+      <p className="text-sm text-slate-400 dark:text-slate-300 mb-4">{statusText}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {currentCardIndices.map((origIdx) => {
+          const term = terms[origIdx];
+          return (
+            <div key={origIdx} className="perspective cursor-pointer h-36" onClick={() => handleFlip(origIdx)}>
+              <div className={`transform-style-3d relative w-full h-full transition-transform duration-500 ${flipped[origIdx] ? 'rotate-y-180' : ''}`}>
+                <div className="backface-hidden absolute inset-0 bg-white dark:bg-slate-800 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="font-serif font-bold text-center text-[#004030] dark:text-[#D8C3A5]">{term.front}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-300 mt-2">{t.flip_prompt}</p>
+                </div>
+                <div className="backface-hidden rotate-y-180 absolute inset-0 bg-[#004030] dark:bg-slate-700 rounded-xl p-4 flex items-center justify-center">
+                  <p className="text-sm text-center text-[#D8C3A5] dark:text-slate-200 leading-relaxed">{term.back}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={() => { setGroupIdx(0); setFlipped({}); }}
+          className="px-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">
+          {t.flip_retry}
+        </button>
+        <button onClick={() => groupIdx < totalGroups - 1 && setGroupIdx(groupIdx + 1)}
+          disabled={groupIdx >= totalGroups - 1}
+          className="px-4 py-2 text-sm bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg disabled:opacity-40">
+          {t.flip_next}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ============ ModuleQuiz ============ */
+const ModuleQuiz = ({ questions, t, moduleId, onQuizSubmit, moduleName }) => {
+  const [selected, setSelected] = useState({});
+  const [submitted, setSubmitted] = useState({});
+  const [groupIdx, setGroupIdx] = useState(0);
+  const groupSize = 2;
+
+  const [quizIndices] = useState(() => [...Array(questions.length).keys()].sort(() => Math.random() - 0.5));
+  const totalGroups = Math.ceil(quizIndices.length / groupSize);
+
+  const [shuffledMaps] = useState(() =>
+    quizIndices.map(qIdx => {
+      const n = questions[qIdx].opts.length;
+      return [...Array(n).keys()].sort(() => Math.random() - 0.5);
+    })
+  );
+
+  const totalAnswered = Object.keys(selected).length;
+  const computeCorrect = () => {
+    let c = 0;
+    quizIndices.forEach((qIdx, qi) => {
+      if (selected[qi] === undefined) return;
+      if (shuffledMaps[qi][selected[qi]] === _d(questions[qIdx].ans)) c++;
+    });
+    return c;
+  };
+  const statusText = t.quiz_status.replace('{correct}', computeCorrect()).replace('{answered}', totalAnswered).replace('{total}', quizIndices.length);
+
+  const currentStart = groupIdx * groupSize;
+  const currentIndices = quizIndices.slice(currentStart, currentStart + groupSize);
+
+  const handleGroupSubmit = () => {
+    const allDone = currentIndices.every((_, i) => selected[currentStart + i] !== undefined);
+    if (!allDone) return;
+    const newSubmitted = { ...submitted, [groupIdx]: true };
+    setSubmitted(newSubmitted);
+    if (Object.keys(newSubmitted).length === totalGroups) {
+      const wrongQs = [];
+      let correct = 0;
+      quizIndices.forEach((qIdx, qi) => {
+        if (selected[qi] === undefined) return;
+        if (shuffledMaps[qi][selected[qi]] === _d(questions[qIdx].ans)) correct++;
+        else wrongQs.push(questions[qIdx].q);
+      });
+      onQuizSubmit(moduleId, correct, quizIndices.length, wrongQs, moduleName);
+    }
+  };
+
+  const handleRetry = () => {
+    setSelected({}); setSubmitted({}); setGroupIdx(0);
+  };
+
+  return (
+    <div className="mt-8 bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700" key={`quiz-${moduleId}`}>
+      <h3 className="text-lg font-bold font-serif text-[#004030] dark:text-[#D8C3A5] mb-2">{t.quiz_title}</h3>
+      <p className="text-sm text-slate-400 dark:text-slate-300 mb-6">{statusText}</p>
+      {currentIndices.map((qIdx, localI) => {
+        const qi = currentStart + localI;
+        const q = questions[qIdx];
+        const sMap = shuffledMaps[qi];
+        const isGrpSub = !!submitted[groupIdx];
+        return (
+          <div key={qIdx} className="mb-6">
+            <p className="font-bold mb-3">{qi + 1}. {q.q}</p>
+            <div className="space-y-2">
+              {sMap.map((origIdx, dIdx) => {
+                const isCorrectOpt = origIdx === _d(q.ans);
+                const isSel = selected[qi] === dIdx;
+                let cls = "w-full text-left px-4 py-3 rounded-lg border transition-all text-sm ";
+                if (isGrpSub) {
+                  if (isCorrectOpt) cls += "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300";
+                  else if (isSel) cls += "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300";
+                  else cls += "border-slate-200 dark:border-slate-700 opacity-60";
+                } else {
+                  cls += isSel ? "border-[#004030] dark:border-[#D8C3A5] bg-[#004030]/5 dark:bg-[#D8C3A5]/10" : "border-slate-200 dark:border-slate-700 hover:border-slate-400";
+                }
+                return (
+                  <button key={dIdx} onClick={() => !isGrpSub && setSelected(s => ({ ...s, [qi]: dIdx }))} className={cls}>
+                    {q.opts[origIdx]}
+                  </button>
+                );
+              })}
+            </div>
+            {isGrpSub && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 italic">{t.explanation}：{q.exp}</p>
+            )}
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={handleRetry} className="px-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">
+          {t.quiz_retry}
+        </button>
+        {!submitted[groupIdx] ? (
+          <button onClick={handleGroupSubmit} className="px-4 py-2 text-sm bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg">
+            {t.submit}
+          </button>
+        ) : (
+          <button onClick={() => groupIdx < totalGroups - 1 && setGroupIdx(groupIdx + 1)}
+            disabled={groupIdx >= totalGroups - 1}
+            className="px-4 py-2 text-sm bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg disabled:opacity-40">
+            {t.quiz_next}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============ Module SVG Diagrams ============ */
+const copyrightGuard = (e) => { e.preventDefault(); if (window.showCopyrightToast) window.showCopyrightToast(); };
+
+const SVGWrap = ({ children }) => (
+  <div className="my-6 bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 overflow-x-auto" onContextMenu={copyrightGuard}>
+    {children}
+  </div>
+);
+
+// M1 — DigCompEdu 6-level ladder
+const DiagramM1 = () => (
+  <SVGWrap><svg viewBox="0 0 720 200" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    {['A1','A2','B1','B2','C1','C2'].map((lv,i)=>(
+      <g key={lv}>
+        <rect x={20+i*115} y={170-(i+1)*22} width="90" height={(i+1)*22} rx="6" fill={i%2===0?'#004030':'#D8C3A5'} opacity={0.85}/>
+        <text x={65+i*115} y="190" textAnchor="middle" fontSize="13" fontWeight="700" fill="currentColor">{lv}</text>
+      </g>
+    ))}
+    <text x="360" y="20" textAnchor="middle" fontSize="14" fontWeight="700" fill="currentColor">DigCompEdu 六級熟練度階梯 / Six Proficiency Levels</text>
+  </g></svg></SVGWrap>
+);
+
+// M2 — UNESCO 3-stage circular progression
+const DiagramM2 = () => (
+  <SVGWrap><svg viewBox="0 0 720 220" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    {[['Acquire 獲得',120],['Deepen 深化',360],['Create 創造',600]].map(([label,cx],i)=>(
+      <g key={label}>
+        <circle cx={cx} cy="110" r="55" fill="none" stroke={i===1?'#D8C3A5':'#004030'} strokeWidth="4"/>
+        <text x={cx} y="105" textAnchor="middle" fontSize="13" fontWeight="700" fill="currentColor">{label.split(' ')[0]}</text>
+        <text x={cx} y="125" textAnchor="middle" fontSize="13" fill="currentColor">{label.split(' ')[1]}</text>
+        {i<2 && <line x1={cx+55} y1="110" x2={cx+185} y2="110" stroke="currentColor" strokeWidth="2" markerEnd="url(#arrow)"/>}
+      </g>
+    ))}
+    <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="currentColor"/></marker></defs>
+  </g></svg></SVGWrap>
+);
+
+// M3 — OECD 4 quadrant
+const DiagramM3 = () => (
+  <SVGWrap><svg viewBox="0 0 720 320" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    {[['Engaging\n理解運用',60,60,'#004030'],['Creating\n創造性運用',370,60,'#D8C3A5'],['Managing\n管理風險',60,200,'#D8C3A5'],['Designing\n設計系統',370,200,'#004030']].map(([label,x,y,c])=>(
+      <g key={label}>
+        <rect x={x} y={y} width="290" height="100" rx="10" fill={c} opacity="0.85"/>
+        {label.split('\n').map((ln,i)=>(
+          <text key={i} x={x+145} y={y+45+i*22} textAnchor="middle" fontSize="14" fontWeight="700" fill={c==='#004030'?'#D8C3A5':'#004030'}>{ln}</text>
+        ))}
+      </g>
+    ))}
+  </g></svg></SVGWrap>
+);
+
+// M4 — US-DOE human-in-the-loop
+const DiagramM4 = () => (
+  <SVGWrap><svg viewBox="0 0 720 220" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    <circle cx="360" cy="110" r="80" fill="none" stroke="#004030" strokeWidth="4"/>
+    <text x="360" y="105" textAnchor="middle" fontSize="15" fontWeight="700" fill="currentColor">Educator</text>
+    <text x="360" y="125" textAnchor="middle" fontSize="13" fill="currentColor">教育者決策核心</text>
+    <circle cx="150" cy="110" r="50" fill="#D8C3A5" opacity="0.85"/>
+    <text x="150" y="115" textAnchor="middle" fontSize="13" fontWeight="700" fill="#004030">AI Tools</text>
+    <circle cx="570" cy="110" r="50" fill="#D8C3A5" opacity="0.85"/>
+    <text x="570" y="108" textAnchor="middle" fontSize="13" fontWeight="700" fill="#004030">Students /</text>
+    <text x="570" y="124" textAnchor="middle" fontSize="13" fontWeight="700" fill="#004030">Decisions</text>
+    <line x1="200" y1="110" x2="280" y2="110" stroke="currentColor" strokeWidth="2" markerEnd="url(#arrow2)"/>
+    <line x1="440" y1="110" x2="520" y2="110" stroke="currentColor" strokeWidth="2" markerEnd="url(#arrow2)"/>
+    <defs><marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="currentColor"/></marker></defs>
+  </g></svg></SVGWrap>
+);
+
+// M5 — D1-D5 integration map
+const DiagramM5 = () => (
+  <SVGWrap><svg viewBox="0 0 720 260" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    {['D1 基礎素養','D2 應用整合','D3 倫理判斷','D4 治理風險','D5 成長創新'].map((label,i)=>(
+      <g key={label}>
+        <rect x={20+i*140} y="100" width="120" height="60" rx="8" fill={i%2===0?'#004030':'#D8C3A5'} opacity="0.85"/>
+        <text x={80+i*140} y="135" textAnchor="middle" fontSize="12" fontWeight="700" fill={i%2===0?'#D8C3A5':'#004030'}>{label}</text>
+      </g>
+    ))}
+    <text x="360" y="40" textAnchor="middle" fontSize="14" fontWeight="700" fill="currentColor">四大架構 → D1–D5 共通構面</text>
+    <text x="360" y="220" textAnchor="middle" fontSize="11" fill="currentColor">DigCompEdu ・ UNESCO ・ OECD/EC ・ US-DOE</text>
+  </g></svg></SVGWrap>
+);
+
+// M6 — Four-party ecosystem
+const DiagramM6 = () => (
+  <SVGWrap><svg viewBox="0 0 720 350" draggable="false" className="w-full h-auto"><g fontFamily="Inter,sans-serif">
+    {[['校長 Principal',360,75],['教師 Teacher',600,175],['學生 Student',360,275],['家庭/產業 Family',120,175]].map(([label,x,y])=>(
+      <g key={label}>
+        <circle cx={x} cy={y} r="65" fill="#004030" opacity="0.85"/>
+        <text x={x} y={y-4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#D8C3A5">{label.split(' ')[0]}</text>
+        <text x={x} y={y+14} textAnchor="middle" fontSize="11" fill="#D8C3A5">{label.split(' ')[1]||''}</text>
+      </g>
+    ))}
+    <circle cx="360" cy="175" r="40" fill="#D8C3A5" opacity="0.9"/>
+    <text x="360" y="171" textAnchor="middle" fontSize="11" fontWeight="700" fill="#004030">D1–D5</text>
+    <text x="360" y="185" textAnchor="middle" fontSize="10" fontWeight="700" fill="#004030">共通語言</text>
+  </g></svg></SVGWrap>
+);
+
+const moduleDiagrams = { 1: DiagramM1, 2: DiagramM2, 3: DiagramM3, 4: DiagramM4, 5: DiagramM5, 6: DiagramM6 };
+
+/* ============ Learning Module Page ============ */
+const LearningModule = ({ idx, t, lang, onNav, onCardRead, onQuizSubmit, isPlaying, onTogglePlay }) => {
+  const nav = t[`m${idx}_nav`];
+  const title = t[`m${idx}_title`];
+  const overview = t[`m${idx}_overview`];
+  const highlights = t[`m${idx}_highlights`];
+  const paragraphs = [t[`m${idx}_p1`], t[`m${idx}_p2`], t[`m${idx}_p3`]].filter(Boolean);
+  const wrapup = t[`m${idx}_wrapup`];
+  const terms = t[`m${idx}_terms`];
+  const quiz = t[`m${idx}_q`];
+  const Diagram = moduleDiagrams[idx];
+
+  const fullText = [overview, ...highlights, ...paragraphs, wrapup].join('. ');
+
+  return (
+    <div className="animate-fade-in max-w-3xl">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-[#004030] dark:text-[#D8C3A5]">{nav}</span>
+        <button onClick={() => onTogglePlay(fullText)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">
+          {isPlaying ? <IconPause className="w-3.5 h-3.5"/> : <IconPlay className="w-3.5 h-3.5"/>}
+          {t.audio_read}
+        </button>
+      </div>
+      <h1 className="text-3xl md:text-4xl font-serif font-black text-slate-900 dark:text-white mb-6">{title}</h1>
+
+      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-300 mb-1">{t.overview_label}</h2>
+      <p className="text-base leading-relaxed text-slate-700 dark:text-slate-300 mb-6">{overview}</p>
+
+      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-300 mb-2">{t.highlights_label}</h2>
+      <ul className="space-y-2 mb-6">
+        {highlights.map((h,i) => (
+          <li key={i} className="flex gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <IconCheckCircle className="w-4 h-4 text-[#004030] dark:text-[#D8C3A5] shrink-0 mt-0.5"/>
+            <span>{h}</span>
+          </li>
+        ))}
+      </ul>
+
+      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-300 mb-2">{t.deep_dive_label}</h2>
+      <div className="space-y-4 mb-6">
+        {paragraphs.map((p,i) => <p key={i} className="text-base leading-relaxed text-slate-700 dark:text-slate-300">{p}</p>)}
+      </div>
+
+      {Diagram && <Diagram />}
+
+      <FlipCardDeck terms={terms} t={t} moduleId={idx} onCardRead={onCardRead} />
+
+      <div className="mt-8 p-5 bg-[#004030]/5 dark:bg-[#D8C3A5]/5 rounded-xl border-l-4 border-[#004030] dark:border-[#D8C3A5]">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-300 mb-2">{t.wrapup_label}</h3>
+        <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">{wrapup}</p>
+      </div>
+
+      <ModuleQuiz questions={quiz} t={t} moduleId={idx} onQuizSubmit={onQuizSubmit} moduleName={nav} />
+
+      <div className="flex items-center justify-between mt-10 pt-6 border-t border-slate-200 dark:border-slate-700">
+        <button onClick={() => onNav(idx - 1)} disabled={idx <= 0} className="flex items-center gap-1 text-sm font-medium disabled:opacity-30 hover:text-[#004030] dark:hover:text-[#D8C3A5]">
+          <IconChevronRight className="w-4 h-4 rotate-180"/> {t.nav_prev}
+        </button>
+        <button onClick={() => onNav(idx + 1)} disabled={idx >= TOTAL} className="flex items-center gap-1 text-sm font-medium disabled:opacity-30 hover:text-[#004030] dark:hover:text-[#D8C3A5]">
+          {t.nav_next} <IconChevronRight className="w-4 h-4"/>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ============ Lab: 四方自評 Question Banks (D1-D5 mapped, bilingual) ============ */
+const LAB_BANKS = {
+  zh: {
+    principal: [
+      { dim: "D1", text: "我了解 AI 工具的基本運作方式與限制（D1 基礎素養）" },
+      { dim: "D1", text: "我能向同事或師長簡要說明學校導入 AI 的整體方向" },
+      { dim: "D2", text: "我了解教師在課堂中實際如何運用 AI 工具教學" },
+      { dim: "D2", text: "我會主動了解各系所導入 AI 教學的具體做法" },
+      { dim: "D3", text: "我會關注 AI 使用是否符合學術倫理與誠信規範" },
+      { dim: "D4", text: "我了解學校目前 AI 使用的相關政策與風險管理機制" },
+      { dim: "D4", text: "我會主動推動或檢視 AI 治理相關的配套措施" },
+      { dim: "D5", text: "我支持並鼓勵全校持續精進 AI 素養的長期計畫" }
+    ],
+    teacher: [
+      { dim: "D1", text: "我了解常見 AI 工具（如對話式助理）的基本能力與限制" },
+      { dim: "D1", text: "我能辨識 AI 生成內容可能出現的錯誤或偏誤" },
+      { dim: "D2", text: "我會將 AI 工具整合進教學設計（如出題、教材製作）" },
+      { dim: "D2", text: "我能引導學生在學習任務中適當運用 AI 工具" },
+      { dim: "D3", text: "我會與學生討論 AI 使用的倫理界線（如抄襲、原創性）" },
+      { dim: "D3", text: "我會留意學生是否過度依賴 AI 而減少獨立思考" },
+      { dim: "D4", text: "我了解學校或課程對 AI 使用的相關規範" },
+      { dim: "D4", text: "我會在評量設計中納入 AI 使用的揭露機制" },
+      { dim: "D5", text: "我持續學習新的 AI 工具與教學方法" },
+      { dim: "D5", text: "我會主動與同事分享 AI 教學的經驗與做法" }
+    ],
+    student: [
+      { dim: "D1", text: "我了解 AI 工具的基本能力與限制" },
+      { dim: "D1", text: "我能判斷 AI 生成內容是否可能有錯誤" },
+      { dim: "D2", text: "我會將 AI 工具運用在作業、報告或專案中" },
+      { dim: "D2", text: "我能根據不同任務選擇合適的 AI 工具" },
+      { dim: "D3", text: "我清楚知道哪些情況使用 AI 算是學術不誠實" },
+      { dim: "D3", text: "使用 AI 後我仍會自己驗證或思考答案是否合理" },
+      { dim: "D4", text: "我了解課程對 AI 使用的規範與揭露要求" },
+      { dim: "D4", text: "我會注意使用 AI 工具時的資料隱私風險" },
+      { dim: "D5", text: "我會主動學習新的 AI 工具來提升學習效率" },
+      { dim: "D5", text: "我對 AI 在我未來職涯中的角色有自己的想法" }
+    ],
+    parent: [
+      { dim: "D1", text: "我對 AI 工具的基本概念與用途有初步了解" },
+      { dim: "D1", text: "我知道孩子／員工在學習或工作中可能會用到 AI 工具" },
+      { dim: "D2", text: "我了解學校或企業導入 AI 的大致方式" },
+      { dim: "D3", text: "我關心 AI 使用是否影響孩子／員工的獨立思考能力" },
+      { dim: "D3", text: "我關心 AI 使用是否符合誠信與倫理規範" },
+      { dim: "D4", text: "我了解學校或企業對 AI 使用是否有風險管理措施" },
+      { dim: "D5", text: "我願意支持孩子／員工持續學習 AI 相關技能" },
+      { dim: "D5", text: "我認為 AI 素養對未來就業力有重要影響" }
+    ]
+  },
+  en: {
+    principal: [
+      { dim: "D1", text: "I understand how AI tools basically work and their limitations (D1 Foundational)" },
+      { dim: "D1", text: "I can briefly explain the school's overall AI adoption direction to colleagues" },
+      { dim: "D2", text: "I understand how teachers actually use AI tools in their classrooms" },
+      { dim: "D2", text: "I proactively learn about how departments are adopting AI in teaching" },
+      { dim: "D3", text: "I pay attention to whether AI use complies with academic integrity standards" },
+      { dim: "D4", text: "I understand the school's current AI usage policies and risk management mechanisms" },
+      { dim: "D4", text: "I actively promote or review AI governance support measures" },
+      { dim: "D5", text: "I support and encourage a long-term plan to continuously improve AI literacy school-wide" }
+    ],
+    teacher: [
+      { dim: "D1", text: "I understand the basic capabilities and limitations of common AI tools (e.g., chat assistants)" },
+      { dim: "D1", text: "I can identify potential errors or biases in AI-generated content" },
+      { dim: "D2", text: "I integrate AI tools into teaching design (e.g., question generation, material creation)" },
+      { dim: "D2", text: "I can guide students to appropriately use AI tools in learning tasks" },
+      { dim: "D3", text: "I discuss ethical boundaries of AI use with students (e.g., plagiarism, originality)" },
+      { dim: "D3", text: "I watch for signs that students over-rely on AI and reduce independent thinking" },
+      { dim: "D4", text: "I understand school or course policies regarding AI use" },
+      { dim: "D4", text: "I incorporate AI usage disclosure mechanisms into assessment design" },
+      { dim: "D5", text: "I continuously learn new AI tools and teaching methods" },
+      { dim: "D5", text: "I proactively share my AI teaching experiences with colleagues" }
+    ],
+    student: [
+      { dim: "D1", text: "I understand the basic capabilities and limitations of AI tools" },
+      { dim: "D1", text: "I can judge whether AI-generated content might contain errors" },
+      { dim: "D2", text: "I use AI tools in assignments, reports, or projects" },
+      { dim: "D2", text: "I can choose appropriate AI tools for different tasks" },
+      { dim: "D3", text: "I clearly understand which situations of AI use count as academic dishonesty" },
+      { dim: "D3", text: "After using AI, I still verify or think through whether the answer is reasonable" },
+      { dim: "D4", text: "I understand course policies and disclosure requirements regarding AI use" },
+      { dim: "D4", text: "I am mindful of data privacy risks when using AI tools" },
+      { dim: "D5", text: "I proactively learn new AI tools to improve my learning efficiency" },
+      { dim: "D5", text: "I have my own views on AI's role in my future career" }
+    ],
+    parent: [
+      { dim: "D1", text: "I have a basic understanding of AI tools' concepts and uses" },
+      { dim: "D1", text: "I know my child/employee may use AI tools in study or work" },
+      { dim: "D2", text: "I understand roughly how the school or company is adopting AI" },
+      { dim: "D3", text: "I care whether AI use affects my child's/employee's independent thinking ability" },
+      { dim: "D3", text: "I care whether AI use complies with integrity and ethical standards" },
+      { dim: "D4", text: "I understand whether the school/company has risk management measures for AI use" },
+      { dim: "D5", text: "I am willing to support my child's/employee's continued learning of AI-related skills" },
+      { dim: "D5", text: "I believe AI literacy will significantly impact future employability" }
+    ]
+  }
+};
+const LAB_DIMS = ["D1","D2","D3","D4","D5"];
+const LAB_DIM_LABEL = { zh: {D1:"基礎素養",D2:"應用整合",D3:"倫理判斷",D4:"治理風險",D5:"成長創新"}, en: {D1:"Foundational",D2:"Applied Integration",D3:"Ethics & Judgment",D4:"Governance & Risk",D5:"Growth & Innovation"} };
+
+/* ============ LabAssessment Component ============ */
+const LabAssessment = ({ t, lang, isDark, onLabComplete }) => {
+  const [role, setRole] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const chartRef = useRef(null);
+  const chartInstance = useRef(null);
+
+  const bank = role ? LAB_BANKS[lang][role] : null;
+
+  const handleSelect = (idx, val) => setAnswers(a => ({ ...a, [idx]: val }));
+
+  const allAnswered = bank ? bank.every((_, i) => answers[i] !== undefined) : false;
+
+  const dimScores = useMemo(() => {
+    if (!bank || !submitted) return null;
+    const sums = {}, counts = {};
+    LAB_DIMS.forEach(d => { sums[d] = 0; counts[d] = 0; });
+    bank.forEach((item, i) => {
+      if (answers[i] !== undefined) { sums[item.dim] += answers[i] + 1; counts[item.dim]++; }
+    });
+    const result = {};
+    LAB_DIMS.forEach(d => { result[d] = counts[d] > 0 ? +(sums[d] / counts[d]).toFixed(2) : 0; });
+    return result;
+  }, [submitted]);
+
+  useEffect(() => {
+    if (submitted && dimScores && chartRef.current) {
+      if (chartInstance.current) chartInstance.current.destroy();
+      const labels = LAB_DIMS.map(d => `${d} ${LAB_DIM_LABEL[lang][d]}`);
+      const data = LAB_DIMS.map(d => dimScores[d]);
+      const gridColor = isDark ? 'rgba(216,195,165,0.2)' : 'rgba(0,64,48,0.15)';
+      const textColor = isDark ? '#D8C3A5' : '#004030';
+      chartInstance.current = new Chart(chartRef.current, {
+        type: 'radar',
+        data: { labels, datasets: [{ label: t.mlab_result_title, data, backgroundColor: isDark ? 'rgba(216,195,165,0.25)' : 'rgba(0,64,48,0.2)', borderColor: isDark ? '#D8C3A5' : '#004030', pointBackgroundColor: isDark ? '#D8C3A5' : '#004030' }] },
+        options: { scales: { r: { min: 0, max: 6, ticks: { stepSize: 1, color: textColor, backdropColor: 'transparent' }, grid: { color: gridColor }, angleLines: { color: gridColor }, pointLabels: { color: textColor, font: { size: 11 } } } }, plugins: { legend: { display: false } } }
+      });
+    }
+    return () => { if (chartInstance.current && submitted === false) { chartInstance.current.destroy(); chartInstance.current = null; } };
+  }, [submitted, lang, isDark]);
+
+  const levelFor = (score) => {
+    if (score < 3) return t.mlab_level_low;
+    if (score < 4.5) return t.mlab_level_mid;
+    return t.mlab_level_high;
+  };
+
+  const reset = () => { setRole(null); setAnswers({}); setSubmitted(false); };
+
+  const handleSubmit = () => {
+    setSubmitted(true);
+    if (onLabComplete) onLabComplete(role);
+  };
+
+  if (!role) {
+    return (
+      <div className="animate-fade-in">
+        <h3 className="text-lg font-bold mb-4">{t.mlab_select_role}</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[['principal', t.mlab_role_principal, IconFlag], ['teacher', t.mlab_role_teacher, IconBookOpen], ['student', t.mlab_role_student, IconUsers], ['parent', t.mlab_role_parent, IconGlobe]].map(([key, label, Icon]) => (
+            <button key={key} onClick={() => setRole(key)} className="flex items-center gap-3 p-5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#004030] dark:hover:border-[#D8C3A5] hover:shadow-md transition-all text-left">
+              <Icon className="w-6 h-6 text-[#004030] dark:text-[#D8C3A5] shrink-0" />
+              <span className="font-bold">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted && dimScores) {
+    const overallScore = +(LAB_DIMS.reduce((sum, d) => sum + dimScores[d], 0) / LAB_DIMS.length).toFixed(2);
+    const overallLevel = levelFor(overallScore);
+    return (
+      <div className="animate-fade-in">
+        <button onClick={reset} className="text-sm mb-4 text-slate-500 dark:text-slate-300 hover:text-[#004030] dark:hover:text-[#D8C3A5]">{t.mlab_back_roles}</button>
+        <h3 className="text-xl font-serif font-bold mb-1">{t.mlab_result_title}</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-300 mb-4">{t.mlab_result_desc}</p>
+        <div className="max-w-md mx-auto mb-6 p-5 rounded-2xl bg-[#004030] dark:bg-[#D8C3A5] text-center">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#D8C3A5] dark:text-[#004030] opacity-80 mb-1">{t.mlab_overall_label}</p>
+          <p className="text-4xl font-serif font-black text-white dark:text-[#004030]">{overallScore} <span className="text-lg font-sans font-normal opacity-80">/ 6</span></p>
+          <p className="text-sm font-bold text-[#D8C3A5] dark:text-[#004030] mt-1">{overallLevel}</p>
+        </div>
+        <div className="max-w-md mx-auto mb-6"><canvas ref={chartRef}></canvas></div>
+        <div className="space-y-2 max-w-md mx-auto">
+          {LAB_DIMS.map(d => (
+            <div key={d} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="text-sm font-medium">{d} {LAB_DIM_LABEL[lang][d]}</span>
+              <span className="text-sm font-bold text-[#004030] dark:text-[#D8C3A5]">{dimScores[d]} / 6 · {levelFor(dimScores[d])}</span>
+            </div>
+          ))}
+        </div>
+        <div className="text-center mt-6">
+          <button onClick={reset} className="px-5 py-2.5 text-sm bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg">{t.mlab_retry_assess}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-fade-in">
+      <button onClick={reset} className="text-sm mb-4 text-slate-500 dark:text-slate-300 hover:text-[#004030] dark:hover:text-[#D8C3A5]">{t.mlab_back_roles}</button>
+      <div className="space-y-6 max-w-2xl">
+        {bank.map((item, i) => (
+          <div key={i} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <p className="font-medium mb-3 text-sm">{i + 1}. {item.text}</p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {t.mlab_scale.map((label, vi) => (
+                <button key={vi} onClick={() => handleSelect(i, vi)}
+                  className={`text-xs py-2 px-1 rounded-lg border transition-all ${answers[i] === vi ? 'bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] border-[#004030] dark:border-[#D8C3A5] font-bold' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="text-center mt-6">
+        <button onClick={handleSubmit} disabled={!allAnswered} className="px-6 py-3 bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg disabled:opacity-40">
+          {t.mlab_submit_assess}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ============ Lab Page (M{N+1}) ============ */
+const LabPage = ({ t, lang, isDark, onLabComplete }) => (
+  <div className="animate-fade-in max-w-3xl">
+    <span className="text-xs font-bold uppercase tracking-widest text-[#004030] dark:text-[#D8C3A5]">{t.mlab_nav}</span>
+    <h1 className="text-3xl md:text-4xl font-serif font-black text-slate-900 dark:text-white mb-3 mt-2">{t.mlab_title}</h1>
+    <p className="text-base text-slate-600 dark:text-slate-300 mb-8">{t.mlab_desc}</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+      {t.mlab_labs.map((lab, i) => (
+        <div key={i} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h4 className="font-bold text-sm mb-1 flex items-center gap-2"><IconFlask className="w-4 h-4 text-[#004030] dark:text-[#D8C3A5]"/>{lab.title}</h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{lab.desc}</p>
+        </div>
+      ))}
+    </div>
+    <LabAssessment t={t} lang={lang} isDark={isDark} onLabComplete={onLabComplete} />
+  </div>
+);
+
+/* ============ Resources Page (M{N+2}) ============ */
+const ResourcesPage = ({ t }) => (
+  <div className="animate-fade-in max-w-3xl">
+    <span className="text-xs font-bold uppercase tracking-widest text-[#004030] dark:text-[#D8C3A5]">{t.mres_nav}</span>
+    <h1 className="text-3xl md:text-4xl font-serif font-black text-slate-900 dark:text-white mb-3 mt-2">{t.mres_title}</h1>
+    <p className="text-base text-slate-600 dark:text-slate-300 mb-8">{t.mres_desc}</p>
+    <div className="space-y-8">
+      {t.mres_groups.map((g, i) => (
+        <div key={i}>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300 mb-3">{g.group}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {g.links.map((l, j) => <LinkCard key={j} label={l.label} url={l.url} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+/* ============ Analytics Module (M{N+3}) ============ */
+const LS_KEY = 'aicf_analytics_v1';
+
+function loadAnalytics() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : { modules: {}, totalClicks: 0, totalTime: 0, info: {} };
+  } catch (e) { return { modules: {}, totalClicks: 0, totalTime: 0, info: {} }; }
+}
+function saveAnalytics(data) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) {}
+}
+
+const AnalyticsPage = ({ t, lang, analytics, setAnalytics }) => {
+  const [form, setForm] = useState(analytics.info || {});
+  const ttsRef = useRef(false);
+
+  const moduleKeys = [...Array(NUM_LEARN).keys()].map(i => i + 1);
+  const moduleNames = moduleKeys.map(i => dict[lang][`m${i}_nav`]);
+
+  const totalClicks = analytics.totalClicks || 0;
+  const totalTime = analytics.totalTime || 0;
+  let totalCorrect = 0, totalQ = 0;
+  moduleKeys.forEach(i => {
+    const m = analytics.modules[i];
+    if (m && m.quizTotal) { totalCorrect += m.quizCorrect; totalQ += m.quizTotal; }
+  });
+  const overallAcc = totalQ > 0 ? Math.round((totalCorrect / totalQ) * 100) : null;
+
+  let totalRead = 0, totalCards = 0;
+  moduleKeys.forEach(i => {
+    const m = analytics.modules[i];
+    if (m) { totalRead += (m.cardsRead || 0); totalCards += (m.cardsTotal || 0); }
+  });
+  const cardUsage = totalCards > 0 ? Math.round((totalRead / totalCards) * 100) : 0;
+
+  const weakModules = moduleKeys
+    .map(i => ({ idx: i, name: moduleNames[i-1], m: analytics.modules[i] }))
+    .filter(x => x.m && x.m.quizTotal > 0)
+    .map(x => ({ ...x, acc: Math.round((x.m.quizCorrect / x.m.quizTotal) * 100) }))
+    .filter(x => x.acc < 75);
+
+  const visitedCount = moduleKeys.filter(i => analytics.modules[i] && analytics.modules[i].visited).length;
+  const quizDoneCount = moduleKeys.filter(i => analytics.modules[i] && analytics.modules[i].quizTotal > 0).length;
+
+  const updateForm = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const formComplete = form.group && form.dept && form.id && form.nameEn && form.nameZh;
+
+  const handleExport = () => {
+    if (!formComplete) return;
+    const rows = [['Module', 'TimeSpent(s)', 'Clicks', 'CardsRead', 'CardsTotal', 'QuizCorrect', 'QuizTotal']];
+    moduleKeys.forEach(i => {
+      const m = analytics.modules[i] || {};
+      rows.push([moduleNames[i-1], m.time || 0, m.clicks || 0, m.cardsRead || 0, m.cardsTotal || 0, m.quizCorrect || 0, m.quizTotal || 0]);
+    });
+    const meta = [['Group', form.group], ['Dept', form.dept], ['ID', sanitizeStudentId(form.id)], ['NameEN', sanitizeName(form.nameEn)], ['NameZH', sanitizeName(form.nameZh)], ['ExportDate', new Date().toISOString()]];
+    const csv = '﻿' + meta.map(r => r.join(',')).join('\n') + '\n\n' + rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `AI素養學習歷程_${sanitizeName(form.nameZh)}_${Date.now()}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    const newAnalytics = { ...analytics, info: form };
+    setAnalytics(newAnalytics); saveAnalytics(newAnalytics);
+  };
+
+  const handleClear = () => {
+    if (window.confirm(t.analytics_wp_clear_confirm)) {
+      const fresh = { modules: {}, totalClicks: 0, totalTime: 0, info: {} };
+      setAnalytics(fresh); saveAnalytics(fresh); setForm({});
+    }
+  };
+
+  const handlePlayWeak = () => {
+    let text = t.analytics_wp_tts_intro + ' ';
+    if (weakModules.length === 0) text += t.analytics_wp_tts_allpass;
+    else weakModules.forEach(w => { text += t.analytics_wp_tts_module.replace('{name}', w.name).replace('{acc}', w.acc) + ' '; });
+    speakText(text, lang);
+  };
+
+  return (
+    <div className="animate-fade-in max-w-3xl">
+      <span className="text-xs font-bold uppercase tracking-widest text-[#004030] dark:text-[#D8C3A5]">{t.analytics_title}</span>
+      <h1 className="text-3xl md:text-4xl font-serif font-black text-slate-900 dark:text-white mb-3 mt-2">{t.analytics_title}</h1>
+      <p className="text-sm text-slate-500 dark:text-slate-300 mb-8">{t.analytics_desc}</p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {[[t.analytics_total_time, `${totalTime}${t.analytics_sec}`], [t.analytics_total_clicks, `${totalClicks}${t.analytics_times}`], [t.analytics_overall_acc, overallAcc !== null ? `${overallAcc}%` : t.analytics_no_data], [t.analytics_card_usage, `${cardUsage}%`]].map(([label, val], i) => (
+          <div key={i} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-2xl font-black text-[#004030] dark:text-[#D8C3A5]">{val}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-300 mt-1">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300 mb-3">{t.analytics_progress_title}</h2>
+      <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+        <p>{t.analytics_progress_visited}: {visitedCount} / {NUM_LEARN}</p>
+        <p>{t.analytics_progress_quiz_done}: {quizDoneCount} / {NUM_LEARN}</p>
+      </div>
+      <div className="overflow-x-auto mb-8">
+        <table className="w-full text-xs border-collapse">
+          <thead><tr className="text-left text-slate-500 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+            <th className="py-2 pr-2">{t.analytics_module}</th><th className="py-2 pr-2">{t.analytics_time}</th><th className="py-2 pr-2">{t.analytics_clicks}</th><th className="py-2 pr-2">{t.analytics_cards_read_total}</th><th className="py-2 pr-2">{t.analytics_correct_ans_total}</th>
+          </tr></thead>
+          <tbody>
+            {moduleKeys.map(i => {
+              const m = analytics.modules[i] || {};
+              return (
+                <tr key={i} className="border-b border-slate-100 dark:border-slate-800">
+                  <td className="py-2 pr-2">{moduleNames[i-1]}</td>
+                  <td className="py-2 pr-2">{m.time || 0}{t.analytics_sec}</td>
+                  <td className="py-2 pr-2">{m.clicks || 0}</td>
+                  <td className="py-2 pr-2">{m.cardsRead || 0} / {m.cardsTotal || 0}</td>
+                  <td className="py-2 pr-2">{m.quizTotal ? `${m.quizCorrect} / ${m.quizTotal}` : t.analytics_no_data}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mb-8 p-5 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">{t.analytics_wp_title}</h2>
+          <button onClick={handlePlayWeak} className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-slate-300 dark:border-slate-600"><IconPlay className="w-3 h-3"/>{t.audio_read}</button>
+        </div>
+        {weakModules.length === 0 ? (
+          <p className="text-sm text-green-600 dark:text-green-400">{t.analytics_wp_allpass}</p>
+        ) : (
+          <ul className="space-y-2">
+            {weakModules.map(w => (
+              <li key={w.idx} className="text-sm flex items-center justify-between">
+                <span>{w.name} — {t.analytics_wp_incorrect} {w.acc}%</span>
+                <button onClick={() => window.__aicf_nav && window.__aicf_nav(w.idx)} className="text-xs text-[#004030] dark:text-[#D8C3A5] font-bold">{t.analytics_wp_goto}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="p-5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300 mb-3">{t.analytics_form_title}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <select value={form.group || ''} onChange={e => updateForm('group', e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent">
+            <option value="">{t.analytics_group_select}</option>
+            {t.group_options.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <input placeholder={t.analytics_dept_ph} value={form.dept || ''} onChange={e => updateForm('dept', e.target.value)} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent" />
+          <input placeholder={t.analytics_id_ph} value={form.id || ''} onChange={e => updateForm('id', sanitizeStudentId(e.target.value))} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent" />
+          <input placeholder={t.analytics_name_en_ph} value={form.nameEn || ''} onChange={e => updateForm('nameEn', sanitizeName(e.target.value))} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent" />
+          <input placeholder={t.analytics_name_zh_ph} value={form.nameZh || ''} onChange={e => updateForm('nameZh', sanitizeName(e.target.value))} className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent" />
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={handleExport} disabled={!formComplete} className="px-4 py-2 text-sm bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg disabled:opacity-40">{t.analytics_export_csv}</button>
+          {!formComplete && <span className="text-xs text-slate-400 dark:text-slate-300">{t.analytics_fill_required}</span>}
+          <button onClick={handleClear} className="ml-auto text-xs text-red-500 hover:underline">{t.analytics_wp_clear}</button>
+        </div>
+        <p className="text-xs text-slate-400 dark:text-slate-300 mt-3">{t.analytics_wp_saved}</p>
+      </div>
+    </div>
+  );
+};
+
+/* ============ M0 Executive Summary ============ */
+const M0Page = ({ t, onNav, isPlaying, onTogglePlay }) => {
+  const fullText = [t.m0_intro, t.m0_why_desc].join('. ');
+  return (
+    <div className="animate-fade-in max-w-3xl">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-[#004030] dark:text-[#D8C3A5]">{t.m0_nav}</span>
+        <button onClick={() => onTogglePlay(fullText)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">
+          {isPlaying ? <IconPause className="w-3.5 h-3.5"/> : <IconPlay className="w-3.5 h-3.5"/>}
+          {t.audio_read}
+        </button>
+      </div>
+      <h1 className="text-3xl md:text-4xl font-serif font-black text-slate-900 dark:text-white mb-6">{t.m0_title}</h1>
+      <p className="text-base leading-relaxed text-slate-700 dark:text-slate-300 mb-8">{t.m0_intro}</p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        {t.m0_stats.map((s, i) => (
+          <div key={i} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-center">
+            <p className="text-3xl font-black text-[#004030] dark:text-[#D8C3A5]">{s.val}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-300 mt-1">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <h2 className="text-xl font-serif font-bold mb-2">{t.m0_why}</h2>
+      <p className="text-base leading-relaxed text-slate-700 dark:text-slate-300 mb-8">{t.m0_why_desc}</p>
+
+      <h2 className="text-xl font-serif font-bold mb-4">{t.nav_modules}</h2>
+      <div className="space-y-3 mb-10">
+        {t.m0_modules.map((m, i) => (
+          <button key={i} onClick={() => onNav(i + 1)} className="w-full flex items-center gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#004030] dark:hover:border-[#D8C3A5] hover:shadow-md transition-all text-left">
+            <span className="text-lg font-black text-[#D8C3A5] dark:text-[#004030] bg-[#004030] dark:bg-[#D8C3A5] rounded-lg w-10 h-10 flex items-center justify-center shrink-0">{m.num}</span>
+            <span className="flex-1">
+              <span className="block font-bold text-sm">{m.title}</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-300">{m.desc}</span>
+            </span>
+            <IconChevronRight className="w-5 h-5 text-slate-400 dark:text-slate-300 shrink-0" />
+          </button>
+        ))}
+      </div>
+
+      <div className="text-center">
+        <button onClick={() => onNav(1)} className="px-6 py-3 bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold rounded-lg">{t.m0_start}</button>
+      </div>
+    </div>
+  );
+};
+
+/* ============ Main App ============ */
+function App() {
+  const [lang, setLang] = useState('en');
+  const [isDark, setIsDark] = useState(true);
+  const [page, setPage] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [analytics, setAnalytics] = useState(() => loadAnalytics());
+  const visitStart = useRef(Date.now());
+  const clickCount = useRef(0);
+
+  const t = dict[lang];
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
+
+  useEffect(() => {
+    window.__aicf_nav = (idx) => setPage(idx);
+    window.showCopyrightToast = showCopyrightToast;
+    return () => { delete window.__aicf_nav; };
+  }, []);
+
+  // Track time-on-module
+  useEffect(() => {
+    visitStart.current = Date.now();
+    clickCount.current = 0;
+    if (page >= 1 && page <= NUM_LEARN) {
+      setAnalytics(prev => {
+        const next = { ...prev, modules: { ...prev.modules, [page]: { ...(prev.modules[page] || {}), visited: true } } };
+        saveAnalytics(next);
+        return next;
+      });
+    }
+    return () => {
+      const elapsed = Math.round((Date.now() - visitStart.current) / 1000);
+      if (page >= 1 && page <= NUM_LEARN && elapsed > 0) {
+        setAnalytics(prev => {
+          const m = prev.modules[page] || {};
+          const next = { ...prev, totalTime: (prev.totalTime || 0) + elapsed, totalClicks: (prev.totalClicks || 0) + clickCount.current, modules: { ...prev.modules, [page]: { ...m, time: (m.time || 0) + elapsed, clicks: (m.clicks || 0) + clickCount.current } } };
+          saveAnalytics(next);
+          return next;
+        });
+      }
+    };
+  }, [page]);
+
+  useEffect(() => {
+    const onClick = () => { clickCount.current += 1; };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
+
+  const handleCardRead = (moduleId, read, shown, total) => {
+    setAnalytics(prev => {
+      const m = prev.modules[moduleId] || {};
+      const next = { ...prev, modules: { ...prev.modules, [moduleId]: { ...m, cardsRead: read, cardsTotal: total } } };
+      saveAnalytics(next);
+      return next;
+    });
+  };
+
+  const handleQuizSubmit = (moduleId, correct, total, wrongQs, moduleName) => {
+    setAnalytics(prev => {
+      const m = prev.modules[moduleId] || {};
+      const next = { ...prev, modules: { ...prev.modules, [moduleId]: { ...m, quizCorrect: correct, quizTotal: total, wrongQs } } };
+      saveAnalytics(next);
+      return next;
+    });
+  };
+
+  const handleTogglePlay = (text) => {
+    if (isPlaying) { window.speechSynthesis.cancel(); setIsPlaying(false); return; }
+    setIsPlaying(true);
+    speakText(text, lang, () => setIsPlaying(false));
+  };
+
+  const navItems = [
+    { idx: 0, label: t.m0_nav, icon: IconHome },
+    ...[...Array(NUM_LEARN).keys()].map(i => ({ idx: i + 1, label: t[`m${i+1}_nav`], icon: IconCpu })),
+    { idx: IDX_LAB, label: t.mlab_nav, icon: IconZapLab },
+    { idx: IDX_RES, label: t.mres_nav, icon: IconGlobe },
+    { idx: IDX_ANA, label: t.analytics_title, icon: IconActivity }
+  ];
+
+  let content;
+  if (page === 0) content = <M0Page t={t} onNav={setPage} isPlaying={isPlaying} onTogglePlay={handleTogglePlay} />;
+  else if (page >= 1 && page <= NUM_LEARN) content = <LearningModule idx={page} t={t} lang={lang} onNav={setPage} onCardRead={handleCardRead} onQuizSubmit={handleQuizSubmit} isPlaying={isPlaying} onTogglePlay={handleTogglePlay} />;
+  else if (page === IDX_LAB) content = <LabPage t={t} lang={lang} isDark={isDark} onLabComplete={() => {}} />;
+  else if (page === IDX_RES) content = <ResourcesPage t={t} />;
+  else if (page === IDX_ANA) content = <AnalyticsPage t={t} lang={lang} analytics={analytics} setAnalytics={setAnalytics} />;
+
+  const mainRef = useRef(null);
+  const scrollContentTop = () => {
+    if (mainRef.current) mainRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const goHomeTop = () => { setPage(0); setSidebarOpen(false); setTimeout(scrollContentTop, 0); };
+  const navTo = (idx) => { setPage(idx); setSidebarOpen(false); setTimeout(scrollContentTop, 0); };
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="h-16 shrink-0 flex items-center justify-between px-2 md:px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40">
+        <div className="flex items-center gap-1 md:gap-3 min-w-0">
+          <button className="md:hidden p-2 shrink-0" onClick={() => setSidebarOpen(s => !s)} aria-label={t.sidebar_title}>
+            {sidebarOpen ? <IconX className="w-6 h-6" /> : <IconMenu className="w-6 h-6" />}
+          </button>
+          <button onClick={goHomeTop} className="font-serif font-black text-lg text-[#004030] dark:text-[#D8C3A5] shrink-0 hover:opacity-70 transition-opacity">{t.brand}</button>
+          <button onClick={scrollContentTop} className="hidden md:inline text-sm text-slate-500 dark:text-slate-400 truncate hover:text-[#004030] dark:hover:text-[#D8C3A5] transition-colors text-left">{t.title}</button>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">{t.lang_toggle}</button>
+          <button onClick={() => setIsDark(d => !d)} aria-label={t.theme_toggle_label} className="p-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">
+            {isDark ? <IconSun className="w-4 h-4" /> : <IconMoon className="w-4 h-4" />}
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 relative">
+        {sidebarOpen && (
+          <div className="fixed inset-0 top-16 bg-black/40 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
+        )}
+        <aside className={`fixed md:sticky top-16 md:top-16 left-0 h-[calc(100vh-4rem)] w-64 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-y-auto z-30 transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+          <p className="px-4 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t.sidebar_title}</p>
+          <nav className="px-2 space-y-1 pb-6">
+            {navItems.map(item => (
+              <button key={item.idx} onClick={() => navTo(item.idx)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-left transition-colors ${page === item.idx ? 'bg-[#004030] dark:bg-[#D8C3A5] text-white dark:text-[#004030] font-bold' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                <item.icon className="w-4 h-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main ref={mainRef} className="flex-1 w-full min-w-0 px-4 md:px-10 py-8 md:py-12">
+          {content}
+        </main>
+      </div>
+
+      <footer className="h-8 shrink-0 flex items-center justify-center gap-3 px-4 text-[11px] text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <span>{t.date}</span><span>·</span><span>{t.copyright}</span><span>·</span>
+        <span>{t.architect_label} <a href={t.architect_url} target="_blank" rel="noopener noreferrer" className="hover:text-[#004030] dark:hover:text-[#D8C3A5] underline">{t.architect_name}</a></span>
+        <span>·</span>
+        <button onClick={scrollContentTop} className="font-bold text-[#004030] dark:text-[#D8C3A5] hover:underline ml-auto">{t.footer_top || 'Top \u2191'}</button>
+      </footer>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
